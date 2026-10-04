@@ -14,10 +14,12 @@ Kobashi is a local bridge that lets [Claude Code](https://www.anthropic.com/clau
 
 | Platform | Download | Size |
 |----------|----------|------|
-| **macOS** (Apple Silicon + Intel) | **[Kobashi.zip (v2.1.6)](https://github.com/xjin6/kobashi/releases/download/v2.1.6/Kobashi.zip)** | ~36 MB |
+| **macOS** (Apple Silicon + Intel) | **[Kobashi.rar (v2.1.6)](https://github.com/xjin6/kobashi/releases/download/v2.1.6/Kobashi.rar)** | ~28 MB |
 | **Windows** | **[Kobashi.exe (v2.1.6)](https://github.com/xjin6/kobashi/releases/download/v2.1.6/Kobashi.exe)** | ~55 MB |
 
-No installation required. No dependencies. Just download and double-click.
+On macOS, extract `Kobashi.rar` with a RAR-capable app such as The Unarchiver or
+Keka, then move `Kobashi.app` to Applications. On Windows, download and run
+`Kobashi.exe` directly. Kobashi itself needs no additional runtime installation.
 
 > **macOS first launch — "unidentified developer" warning**  
 > Kobashi isn't signed with an Apple Developer ID ($99/yr — not worth it for a free tool), so macOS Gatekeeper blocks the first launch. Drag `Kobashi.app` to `/Applications`, then run this **once** in Terminal to remove the quarantine flag:
@@ -131,6 +133,30 @@ some usage, including bounded parameter-negotiation retries. A transient failure
 does not schedule further checks in the background; restart Codex to retry.
 Exiting the clients stops queued validation work. Account changes and newer
 startups invalidate late results from older rounds.
+
+## Building
+
+Run `npm run build:mac` on macOS or `npm run build:win` in Git Bash on Windows.
+Both commands copy the build sources and installed dependencies into a unique
+local temporary directory outside the checkout and OneDrive. Version stamping,
+compilation, icon generation, and packaging happen only in that copy. The copy
+is removed after success or failure; source files in the checkout are not stamped.
+
+After a successful build, only `dist/Kobashi.rar` (macOS) or `dist/Kobashi.exe`
+(Windows) and `dist/SHA256SUMS.txt` are published back to the checkout. The existing
+package for the other platform is preserved. Failed builds leave the previous
+release files in place. No unpacked `.app`, intermediate binaries, or dated build
+directories are copied into `dist`.
+
+The build uses the OS temporary directory by default. To use a different local
+disk, set `KOBASHI_BUILD_TMPDIR` to a directory outside OneDrive and the checkout.
+Cloud-backed temporary paths, including symlinks into OneDrive, are rejected.
+Local npm/pkg download caches are reused; cloud-backed cache overrides are
+redirected into the temporary workspace. The final package path is printed when
+the build completes. macOS packaging requires the RAR command-line tool from
+[RARLAB](https://www.rarlab.com/); put `rar` on PATH or set `KOBASHI_RAR_BIN` to its
+absolute path. The RAR compression tool is shareware; continued use requires a
+license under its terms. Download recipients only need a RAR-capable extractor.
 
 ## Development checks
 

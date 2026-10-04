@@ -1,6 +1,15 @@
 #!/bin/bash
 set -e
+if [ "${KOBASHI_BUILD_STAGED:-}" != "1" ]; then
+  exec node "$(dirname "$0")/build-local.js" mac
+fi
 cd "$(dirname "$0")/.."   # always run from repo root
+
+RAR_BIN="${KOBASHI_RAR_BIN:-rar}"
+if ! command -v "$RAR_BIN" > /dev/null 2>&1; then
+  echo "ERROR: Install the RAR command-line tool from rarlab.com or set KOBASHI_RAR_BIN to its absolute path." >&2
+  exit 1
+fi
 
 APP_NAME="Kobashi"
 BUNDLE_ID="com.xjin6.kobashi"
@@ -15,12 +24,8 @@ RELEASE_DATE="$(date +%Y-%m-%d)"
 TMP="${TMPDIR:-/tmp}"
 TMP="${TMP%/}"
 
-# Stamp version + date into index.js (pkg has no package.json at runtime, so the
-# UI footer would otherwise show "0.0.0"). Restored on exit, incl. on failure.
-STAMP_BAK="$(mktemp "${TMP}/kobashi-stamp.XXXXXX")"
-cp index.js "$STAMP_BAK"
-restore_stamp() { cp "$STAMP_BAK" index.js; rm -f "$STAMP_BAK"; }
-trap restore_stamp EXIT
+# Stamp only the disposable source copy. build-local.js removes the entire
+# workspace on success or failure; the synced checkout is never modified.
 node -e "
 const fs=require('fs');let s=fs.readFileSync('index.js','utf8');
 const before=s;
@@ -143,14 +148,12 @@ cat > "${APP}/Contents/Info.plist" << PLIST
 </plist>
 PLIST
 
-echo "==> Packaging as zip..."
+echo "==> Packaging as RAR..."
 cd dist
-# `zip -r` updates an existing archive in place. Besides retaining stale files,
-# that can hang when the previous archive is an evicted cloud-storage placeholder.
-# Always create the release archive from scratch.
-rm -f "${APP_NAME}.zip"
-zip -r "${APP_NAME}.zip" "${APP_NAME}.app"
+# The staged directory is disposable and starts without previous archives.
+"${RAR_BIN}" a -r -m5 "${APP_NAME}.rar" "${APP_NAME}.app"
+"${RAR_BIN}" t "${APP_NAME}.rar"
 cd ..
 
 echo ""
-echo "Done! dist/${APP_NAME}.zip  ($(du -sh "dist/${APP_NAME}.zip" | cut -f1))"
+echo "==> Built ${APP_NAME}.rar  ($(du -sh "dist/${APP_NAME}.rar" | cut -f1))"

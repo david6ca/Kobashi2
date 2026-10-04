@@ -1,5 +1,8 @@
 #!/bin/bash
 set -e
+if [ "${KOBASHI_BUILD_STAGED:-}" != "1" ]; then
+  exec node "$(dirname "$0")/build-local.js" win
+fi
 cd "$(dirname "$0")/.."   # always run from repo root
 
 BINARY="Kobashi"
@@ -8,19 +11,7 @@ BINARY="Kobashi"
 VERSION="$(node -p "require('./package.json').version")"
 RELEASE_DATE="$(date +%Y-%m-%d)"
 
-# Scratch space. A bare mktemp writes to the system temp dir, which is not
-# writable under a sandboxed shell — same failure the mac script hit. Honour
-# TMPDIR so the build works in restricted environments too.
-TMP="${TMPDIR:-/tmp}"
-TMP="${TMP%/}"
-
-# Stamp version + date into index.js. pkg has no package.json at runtime, so the
-# UI footer would otherwise fall back to "0.0.0". Restored on exit (incl. failure)
-# so the working tree is never left modified.
-STAMP_BAK="$(mktemp "${TMP}/kobashi-stamp.XXXXXX")"
-cp index.js "$STAMP_BAK"
-restore_stamp() { cp "$STAMP_BAK" index.js; rm -f "$STAMP_BAK"; }
-trap restore_stamp EXIT
+# Stamp only the disposable source copy. build-local.js removes it on exit.
 node -e "
 const fs=require('fs');let s=fs.readFileSync('index.js','utf8');
 const before=s;
@@ -44,4 +35,4 @@ echo "==> Setting GUI subsystem (no console window)..."
 node -e "const fs=require('fs'),e='dist/${BINARY}.exe',b=fs.readFileSync(e),p=b.readUInt32LE(0x3C);b.writeUInt16LE(2,p+0x5C);fs.writeFileSync(e,b)"
 
 echo ""
-echo "Done! dist/${BINARY}.exe  ($(du -sh "dist/${BINARY}.exe" | cut -f1))"
+echo "==> Built ${BINARY}.exe  ($(du -sh "dist/${BINARY}.exe" | cut -f1))"

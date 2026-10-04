@@ -18,4 +18,5 @@
 *.ico binary
 *.icns binary
 *.zip binary
+*.rar binary
 *.exe binary
