@@ -18,8 +18,8 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/xjin6/kobashi/assets"
-	"github.com/xjin6/kobashi/internal/bridge"
+	"github.com/david6ca/Kobashi2/assets"
+	"github.com/david6ca/Kobashi2/internal/bridge"
 )
 
 var user = syscall.NewLazyDLL("user32.dll")
@@ -30,6 +30,12 @@ var active *Window
 
 const eventMessage = 0x8001
 const trayMessage = 0x8002
+const (
+	windowWidth         = 400
+	windowHeight        = 400
+	windowStyle         = 0x02ca0000
+	windowExtendedStyle = 0x10000
+)
 const (
 	idConnect = 101 + iota
 	idTokenView
@@ -51,6 +57,9 @@ const (
 
 type point struct{ X, Y int32 }
 type rect struct{ Left, Top, Right, Bottom int32 }
+type minMaxInfo struct {
+	Reserved, MaxSize, MaxPosition, MinTrackSize, MaxTrackSize point
+}
 type message struct {
 	HWnd           uintptr
 	Message        uint32
@@ -197,30 +206,30 @@ func (w *Window) build() error {
 		{"STATIC", "Kobashi", "all", 1, 28, 24, 170, 28, 0},
 		{"BUTTON", "Se&ttings", "all", idSettings, 296, 24, 32, 32, 0x10000},
 		{"BUTTON", "Toggle light/dark &mode", "all", idTheme, 336, 24, 32, 32, 0x10000},
-		{"BUTTON", "Not &Connected", "sign-in", idConnect, 95, 244, 210, 42, 0x10000 | 1},
-		{"STATIC", "Have an access token?", "idle", 3, 99, 303, 119, 24, 0},
-		{"BUTTON", "Paste it instead", "idle", idTokenView, 218, 299, 91, 24, 0x10000},
-		{"STATIC", "Access token", "token", 4, 60, 253, 280, 12, 0},
-		{"EDIT", "", "token", idToken, 73, 274, 254, 22, 0x10000 | 0x80 | 0x20},
-		{"BUTTON", "Not Connected", "token", idLogin, 60, 314, 280, 40, 0x10000 | 1},
-		{"STATIC", "Enter this code at GitHub", "device", 5, 53, 203, 294, 20, 1},
-		{"BUTTON", "Open GitHub", "device", idBrowser, 70, 230, 260, 24, 0x10000},
-		{"STATIC", "", "device", 6, 53, 262, 294, 42, 1},
-		{"BUTTON", "&Copy", "device", idCopy, 166, 309, 68, 24, 0x10000},
-		{"STATIC", "", "connected", 7, 50, 160, 175, 27, 0},
-		{"BUTTON", "Connecte&d", "connected", idDisconnect, 255, 160, 94, 28, 0x10000},
-		{"STATIC", "", "connected", 8, 50, 201, 299, 16, 0},
-		{"BUTTON", "C&laude Bridge", "connected", idClaude, 32, 247, 336, 80, 0x10000 | 3},
-		{"BUTTON", "&Codex Bridge", "connected", idCodex, 32, 339, 336, 80, 0x10000 | 3},
+		{"BUTTON", "Not &Connected", "sign-in", idConnect, 95, 160, 210, 42, 0x10000 | 1},
+		{"STATIC", "Have an access token?", "idle", 3, 99, 215, 119, 24, 0},
+		{"BUTTON", "Paste it instead", "idle", idTokenView, 218, 215, 91, 24, 0x10000},
+		{"STATIC", "Access token", "token", 4, 60, 148, 280, 12, 0},
+		{"EDIT", "", "token", idToken, 73, 172, 254, 22, 0x10000 | 0x80 | 0x20},
+		{"BUTTON", "Not Connected", "token", idLogin, 60, 215, 280, 40, 0x10000 | 1},
+		{"STATIC", "Enter this code at GitHub", "device", 5, 53, 147, 294, 20, 1},
+		{"BUTTON", "Open GitHub", "device", idBrowser, 70, 174, 260, 24, 0x10000},
+		{"STATIC", "", "device", 6, 53, 206, 294, 42, 1},
+		{"BUTTON", "&Copy", "device", idCopy, 166, 253, 68, 24, 0x10000},
+		{"STATIC", "", "connected", 7, 50, 119, 175, 27, 0},
+		{"BUTTON", "Connecte&d", "connected", idDisconnect, 255, 119, 94, 28, 0x10000},
+		{"STATIC", "", "connected", 8, 50, 160, 299, 16, 0},
+		{"BUTTON", "C&laude Bridge", "connected", idClaude, 32, 206, 336, 72, 0x10000 | 3},
+		{"BUTTON", "&Codex Bridge", "connected", idCodex, 32, 290, 336, 72, 0x10000 | 3},
 		{"STATIC", "Settings", "settings", 9, 32, 70, 260, 32, 0},
-		{"BUTTON", "&Start at login", "settings", idStartup, 32, 118, 336, 88, 0x10000 | 3},
-		{"STATIC", "Start Kobashi when you sign in to your computer.", "settings", 10, 48, 156, 268, 34, 0x100},
-		{"BUTTON", "&Close to system tray", "settings", idTray, 32, 218, 336, 88, 0x10000 | 3},
-		{"STATIC", "Keep bridges running when the window is closed.", "settings", 11, 48, 256, 268, 34, 0x100},
-		{"STATIC", "", "all", 12, 32, 373, 336, 42, 0},
-		{"BUTTON", "&Done", "settings", idDone, 32, 372, 336, 38, 0x10000},
-		{"BUTTON", "&Quit Kobashi", "settings", idQuit, 144, 418, 112, 24, 0x10000},
-		{"BUTTON", "Version", "all", idProject, 252, 446, 116, 24, 0x10000},
+		{"BUTTON", "&Start at login", "settings", idStartup, 32, 114, 336, 80, 0x10000 | 3},
+		{"STATIC", "Start Kobashi when you sign in to your computer.", "settings", 10, 48, 152, 268, 34, 0x100},
+		{"BUTTON", "&Close to system tray", "settings", idTray, 32, 206, 336, 80, 0x10000 | 3},
+		{"STATIC", "Keep bridges running when the window is closed.", "settings", 11, 48, 244, 268, 34, 0x100},
+		{"STATIC", "", "all", 12, 32, 252, 336, 70, 0},
+		{"BUTTON", "&Done", "settings", idDone, 32, 328, 336, 32, 0x10000},
+		{"BUTTON", "&Quit Kobashi", "settings", idQuit, 32, 368, 112, 24, 0x10000},
+		{"BUTTON", "Version", "all", idProject, 252, 368, 116, 24, 0x10000},
 	}
 	for _, item := range items {
 		if err := w.add(item.class, item.title, item.view, item.id, item.x, item.y, item.width, item.height, item.style); err != nil {
@@ -593,7 +602,7 @@ func (w *Window) command(id int) {
 		}
 		w.post("/api/appearance", map[string]any{"appearance": mode})
 	case idProject:
-		if err := OpenURL("https://github.com/xjin6/kobashi"); err != nil {
+		if err := OpenURL("https://github.com/david6ca/Kobashi2"); err != nil {
 			w.notice = err.Error()
 			w.render()
 		}
@@ -640,20 +649,24 @@ func (w *Window) quit() {
 		proc("PostMessageW", w.Handle, eventMessage, 0, 0)
 	}()
 }
-func (w *Window) fixedSize(x, y int) {
-	style := proc("GetWindowLongW", w.Handle, ^uintptr(15))
-	extended := proc("GetWindowLongW", w.Handle, ^uintptr(19))
-	frameDPI := proc("GetDpiForWindow", w.Handle)
+func (w *Window) windowBounds(hwnd uintptr) rect {
+	style := proc("GetWindowLongW", hwnd, ^uintptr(15))
+	extended := proc("GetWindowLongW", hwnd, ^uintptr(19))
+	frameDPI := proc("GetDpiForWindow", hwnd)
 	if frameDPI == 0 {
 		frameDPI = uintptr(w.dpi)
 	}
-	r := rect{Right: int32(400 * w.dpi / 96), Bottom: int32(480 * w.dpi / 96)}
+	r := rect{Right: int32(windowWidth * w.dpi / 96), Bottom: int32(windowHeight * w.dpi / 96)}
 	adjust := user.NewProc("AdjustWindowRectExForDpi")
 	if adjust.Find() == nil {
 		adjust.Call(uintptr(unsafe.Pointer(&r)), style, 0, extended, frameDPI)
 	} else {
 		proc("AdjustWindowRectEx", uintptr(unsafe.Pointer(&r)), style, 0, extended)
 	}
+	return r
+}
+func (w *Window) fixedSize(x, y int) {
+	r := w.windowBounds(w.Handle)
 	proc("SetWindowPos", w.Handle, 0, uintptr(x), uintptr(y), uintptr(r.Right-r.Left), uintptr(r.Bottom-r.Top), 0x4|0x10)
 	for _, c := range w.controls {
 		proc("MoveWindow", c.handle, uintptr(c.x*w.dpi/96), uintptr(c.y*w.dpi/96), uintptr(c.w*w.dpi/96), uintptr(c.h*w.dpi/96), 1)
@@ -744,6 +757,15 @@ func windowProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return 0
 	}
 	switch msg {
+	case 0x24:
+		var info minMaxInfo
+		kernel.NewProc("RtlMoveMemory").Call(uintptr(unsafe.Pointer(&info)), lp, unsafe.Sizeof(info))
+		r := w.windowBounds(hwnd)
+		size := point{r.Right - r.Left, r.Bottom - r.Top}
+		// Keep Windows sizing constraints from clipping the fixed client area.
+		info.MinTrackSize, info.MaxTrackSize = size, size
+		kernel.NewProc("RtlMoveMemory").Call(lp, uintptr(unsafe.Pointer(&info)), unsafe.Sizeof(info))
+		return 0
 	case 0x11:
 		return 1
 	case 0x16:
@@ -895,7 +917,7 @@ func Run(app *bridge.App, hidden bool) error {
 		return err
 	}
 	defer user.NewProc("UnregisterClassW").Call(uintptr(unsafe.Pointer(wide("KobashiNativeWindow"))), 0)
-	h, _, err := user.NewProc("CreateWindowExW").Call(0x10000, uintptr(unsafe.Pointer(wide("KobashiNativeWindow"))), uintptr(unsafe.Pointer(wide("Kobashi"))), 0x02ca0000, 100, 100, 400, 480, 0, 0, 0, 0)
+	h, _, err := user.NewProc("CreateWindowExW").Call(windowExtendedStyle, uintptr(unsafe.Pointer(wide("KobashiNativeWindow"))), uintptr(unsafe.Pointer(wide("Kobashi"))), windowStyle, 100, 100, windowWidth, windowHeight, 0, 0, 0, 0)
 	if h == 0 {
 		return err
 	}

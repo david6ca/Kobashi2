@@ -14,7 +14,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/xjin6/kobashi/internal/bridge"
+	"github.com/david6ca/Kobashi2/internal/bridge"
 )
 
 func freePort(t *testing.T) int {
@@ -83,13 +83,18 @@ func TestNativeWindowControlsSizeSettingsAndTrayLifecycle(t *testing.T) {
 	if dpi == 0 {
 		dpi = 96
 	}
-	if int(r.Right) != 400*int(dpi)/96 || int(r.Bottom) != 480*int(dpi)/96 {
+	if int(r.Right) != windowWidth*int(dpi)/96 || int(r.Bottom) != windowHeight*int(dpi)/96 {
 		t.Fatal("incorrect fixed content dimensions", r, dpi)
+	}
+	proc("SetWindowPos", h, 0, 0, 0, 200, 200, 0x2|0x4|0x10)
+	proc("GetClientRect", h, uintptr(unsafe.Pointer(&r)))
+	if int(r.Right) != windowWidth*int(dpi)/96 || int(r.Bottom) != windowHeight*int(dpi)/96 {
+		t.Fatal("Windows resized the window below its complete content", r, dpi)
 	}
 	suggested := rect{Left: 100, Top: 100}
 	proc("SendMessageW", h, 0x2e0, 144<<16|144, uintptr(unsafe.Pointer(&suggested)))
 	proc("GetClientRect", h, uintptr(unsafe.Pointer(&r)))
-	if r.Right != 600 || r.Bottom != 720 {
+	if r.Right != 600 || r.Bottom != 600 {
 		t.Fatal("DPI changes did not preserve logical dimensions", r)
 	}
 	proc("SendMessageW", h, 0x2e0, dpi<<16|dpi, uintptr(unsafe.Pointer(&suggested)))

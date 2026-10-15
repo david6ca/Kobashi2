@@ -752,7 +752,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         if !NSWorkspace.shared.open(url) { notice = "Could not open GitHub."; render() }
     }
     @objc func openProject() {
-        if !NSWorkspace.shared.open(URL(string: "https://github.com/xjin6/kobashi")!) {
+        if !NSWorkspace.shared.open(URL(string: "https://github.com/david6ca/Kobashi2")!) {
             notice = "Could not open the project page."
             render()
         }

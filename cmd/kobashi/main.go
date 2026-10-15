@@ -13,8 +13,8 @@ import (
 	"runtime"
 	"syscall"
 
-	"github.com/xjin6/kobashi/internal/bridge"
-	"github.com/xjin6/kobashi/internal/desktop"
+	"github.com/david6ca/Kobashi2/internal/bridge"
+	"github.com/david6ca/Kobashi2/internal/desktop"
 )
 
 var Version = "dev"

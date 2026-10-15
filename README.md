@@ -48,8 +48,9 @@ default:
 Login startup runs in the tray when close to tray is enabled; otherwise it opens
 the window. Settings are saved in `~/.kobashi/settings.json` independently of your
 GitHub connection and are preserved when you disconnect. The main window has a fixed
-400 × 480 logical content area that scales with display DPI, a plain background,
-and no decorative footer animation.
+400 × 400 logical content area on Windows and 400 × 480 on macOS, with a plain
+background and no decorative footer animation. Windows scales the entire window,
+including its frame, with display DPI and keeps all controls visible without scrolling.
 
 To stop Kobashi while close to tray is enabled, select **Quit Kobashi** in Settings
 window or **Quit Kobashi** in the tray/menu-bar menu. macOS also supports **Cmd-Q**,

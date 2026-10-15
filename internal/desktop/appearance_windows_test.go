@@ -76,8 +76,8 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 		t.Fatal("could not register isolated UI test class")
 	}
 	defer proc("UnregisterClassW", uintptr(unsafe.Pointer(class.Name)), 0)
-	w.Handle = proc("CreateWindowExW", 0, uintptr(unsafe.Pointer(class.Name)), uintptr(unsafe.Pointer(wide("Isolated UI test"))),
-		0x82000000, 0, 0, 400, 480, 0, 0, 0, 0)
+	w.Handle = proc("CreateWindowExW", windowExtendedStyle, uintptr(unsafe.Pointer(class.Name)), uintptr(unsafe.Pointer(wide("Isolated UI test"))),
+		windowStyle, 0, 0, windowWidth, windowHeight, 0, 0, 0, 0)
 	if w.Handle == 0 {
 		t.Fatal("could not create isolated native UI")
 	}
@@ -90,6 +90,7 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 	if err := w.build(); err != nil {
 		t.Fatal(err)
 	}
+	w.fixedSize(0, 0)
 	if w.control(2) != 0 {
 		t.Fatal("the route description is still present")
 	}
@@ -164,12 +165,32 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 			}
 		}
 	}
+	assertVisibleControlsFit := func() {
+		t.Helper()
+		var client rect
+		proc("GetClientRect", w.Handle, uintptr(unsafe.Pointer(&client)))
+		if proc("GetWindowLongW", w.Handle, ^uintptr(15))&(0x100000|0x200000) != 0 {
+			t.Fatal("the compact window has scrollbars")
+		}
+		for _, c := range w.controls {
+			if proc("GetWindowLongW", c.handle, ^uintptr(15))&0x10000000 == 0 {
+				continue
+			}
+			var bounds rect
+			proc("GetWindowRect", c.handle, uintptr(unsafe.Pointer(&bounds)))
+			proc("MapWindowPoints", 0, w.Handle, uintptr(unsafe.Pointer(&bounds)), 2)
+			if bounds.Left < 0 || bounds.Top < 0 || bounds.Right > client.Right || bounds.Bottom > client.Bottom {
+				t.Fatalf("%s/%d DPI clips control %d: %v outside %v", w.view, w.dpi, c.id, bounds, client)
+			}
+		}
+	}
 	for _, theme := range []string{"dark", "light"} {
 		w.status["appearance"] = theme
 		for _, view := range []string{"idle", "token", "device", "connected", "settings"} {
 			w.view = view
 			w.notice = ""
 			w.render()
+			assertVisibleControlsFit()
 			if view == "idle" || view == "token" {
 				assertStatus(idConnect, "Not Connected", w.palette.disconnected)
 			}
@@ -190,7 +211,7 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 				w.busy = false
 				w.render()
 			}
-			screenshot := captureClient(t, w.Handle, 400, 480)
+			screenshot := captureClient(t, w.Handle, windowWidth, windowHeight)
 			want := themePalette(theme == "dark", w.highContrast)
 			background := screenshot.NRGBAAt(5, 5)
 			if background != (color.NRGBA{R: byte(want.background >> 16), G: byte(want.background >> 8), B: byte(want.background), A: 255}) {
@@ -215,10 +236,10 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 	}
 	for id, want := range map[int]rect{
 		idSettings: {296, 24, 328, 56}, idTheme: {336, 24, 368, 56},
-		idClaude: {32, 247, 368, 327}, idCodex: {32, 339, 368, 419},
-		idDisconnect: {255, 160, 349, 188},
-		idStartup:    {32, 118, 368, 206}, idTray: {32, 218, 368, 306},
-		idDone: {32, 372, 368, 410}, idQuit: {144, 418, 256, 442},
+		idClaude: {32, 206, 368, 278}, idCodex: {32, 290, 368, 362},
+		idDisconnect: {255, 119, 349, 147},
+		idStartup:    {32, 114, 368, 194}, idTray: {32, 206, 368, 286},
+		idDone: {32, 328, 368, 360}, idQuit: {32, 368, 144, 392},
 	} {
 		var got rect
 		proc("GetWindowRect", w.control(id), uintptr(unsafe.Pointer(&got)))
@@ -244,9 +265,18 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 			assertStatus(idConnect, "Not Connected", w.palette.disconnected)
 			var client rect
 			proc("GetClientRect", w.Handle, uintptr(unsafe.Pointer(&client)))
-			if int(client.Right) != 400*dpi/96 || int(client.Bottom) != 480*dpi/96 {
+			if int(client.Right) != windowWidth*dpi/96 || int(client.Bottom) != windowHeight*dpi/96 {
 				t.Fatalf("%s/%d DPI changed the fixed logical content size: %v", theme, dpi, client)
 			}
+			var frame rect
+			proc("GetWindowRect", w.Handle, uintptr(unsafe.Pointer(&frame)))
+			var limits minMaxInfo
+			proc("SendMessageW", w.Handle, 0x24, 0, uintptr(unsafe.Pointer(&limits)))
+			wantSize := point{frame.Right - frame.Left, frame.Bottom - frame.Top}
+			if limits.MinTrackSize != wantSize || limits.MaxTrackSize != wantSize {
+				t.Fatalf("%s/%d DPI allows Windows to clip the fixed content: %+v, frame %v", theme, dpi, limits, frame)
+			}
+			assertVisibleControlsFit()
 			var hint, link control
 			dc := proc("GetDC", w.Handle)
 			if dc == 0 {
@@ -289,7 +319,7 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				err = png.Encode(f, captureClient(t, w.Handle, 400*dpi/96, 480*dpi/96))
+				err = png.Encode(f, captureClient(t, w.Handle, windowWidth*dpi/96, windowHeight*dpi/96))
 				closeErr := f.Close()
 				if err != nil || closeErr != nil {
 					t.Fatal(err, closeErr)
@@ -330,7 +360,7 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 			proc("MapWindowPoints", 0, w.Handle, uintptr(unsafe.Pointer(&doneBounds)), 2)
 			proc("MapWindowPoints", 0, w.Handle, uintptr(unsafe.Pointer(&quitBounds)), 2)
 			if int(quitBounds.Top-doneBounds.Bottom) < 8*dpi/96-1 ||
-				int(quitBounds.Bottom) > 446*dpi/96 ||
+				int(quitBounds.Bottom) > (windowHeight-8)*dpi/96 ||
 				int(quitBounds.Bottom-quitBounds.Top) < 24*dpi/96 {
 				t.Errorf("%s/%d DPI overlaps or clips the Quit link", theme, dpi)
 			}
@@ -340,11 +370,16 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				err = png.Encode(f, captureClient(t, w.Handle, 400*dpi/96, 480*dpi/96))
+				err = png.Encode(f, captureClient(t, w.Handle, windowWidth*dpi/96, windowHeight*dpi/96))
 				closeErr := f.Close()
 				if err != nil || closeErr != nil {
 					t.Fatal(err, closeErr)
 				}
+			}
+			for _, view := range []string{"idle", "token", "device", "connected", "settings", "quitting"} {
+				w.view = view
+				w.render()
+				assertVisibleControlsFit()
 			}
 		}
 	}

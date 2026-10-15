@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/xjin6/kobashi/assets"
+	"github.com/david6ca/Kobashi2/assets"
 )
 
 type palette struct {
@@ -106,7 +106,7 @@ func (w *Window) layout() {
 			}
 			gdi.NewProc("SelectObject").Call(dc, old)
 			proc("ReleaseDC", w.Handle, dc)
-			hint.x = (400 - hint.w - 6 - link.w) / 2
+			hint.x = (windowWidth - hint.w - 6 - link.w) / 2
 			link.x = hint.x + hint.w + 6
 			hint.y = link.y
 		}
@@ -114,23 +114,23 @@ func (w *Window) layout() {
 	for i := range w.controls {
 		c := &w.controls[i]
 		if c.id == idConnect {
-			c.y = 244
+			c.y = 160
 			if w.view == "token" {
-				c.y = 210
+				c.y = 94
 			}
 		} else if c.id == 12 {
-			c.y, c.h = 334, 70
+			c.y, c.h = 252, 70
 			switch w.view {
 			case "connected":
-				c.y, c.h = 112, 30
+				c.y, c.h = 64, 30
 			case "settings":
-				c.y, c.h = 320, 36
+				c.y, c.h = 290, 30
 			case "token":
-				c.y, c.h = 364, 62
+				c.y, c.h = 267, 62
 			case "device":
-				c.y, c.h = 378, 48
+				c.y, c.h = 308, 48
 			case "quitting":
-				c.y = 200
+				c.y = 160
 			}
 		}
 		proc("MoveWindow", c.handle, uintptr(c.x*w.dpi/96), uintptr(c.y*w.dpi/96), uintptr(c.w*w.dpi/96), uintptr(c.h*w.dpi/96), 0)
@@ -308,36 +308,36 @@ func (w *Window) paintWindow(dc uintptr) {
 		dc = proc("BeginPaint", w.Handle, uintptr(unsafe.Pointer(&ps)))
 		defer proc("EndPaint", w.Handle, uintptr(unsafe.Pointer(&ps)))
 	}
-	w.buffered(dc, 400, 480, func(p painter) {
+	w.buffered(dc, windowWidth, windowHeight, func(p painter) {
 		c := w.palette
-		p.fill(0, 0, 400, 480, c.background)
+		p.fill(0, 0, windowWidth, windowHeight, c.background)
 		switch w.view {
 		case "connected":
-			p.round(32, 145, 336, 90, 12, c.panel, c.border)
+			p.round(32, 104, 336, 90, 12, c.panel, c.border)
 			if used, total, ok := w.usage(); ok {
-				p.round(50, 219, 299, 5, 3, c.toggle, c.toggle)
+				p.round(50, 178, 299, 5, 3, c.toggle, c.toggle)
 				width := int(math.Min(1, used/total) * 299)
 				if used > 0 {
 					width = max(3, width)
 					saved, _, _ := gdi.NewProc("SaveDC").Call(p.dc)
-					region, _, _ := gdi.NewProc("CreateRoundRectRgn").Call(p.s(50), p.s(219), p.s(50+width), p.s(224), p.s(6), p.s(6))
+					region, _, _ := gdi.NewProc("CreateRoundRectRgn").Call(p.s(50), p.s(178), p.s(50+width), p.s(183), p.s(6), p.s(6))
 					gdi.NewProc("ExtSelectClipRgn").Call(p.dc, region, 1)
-					p.gradient(50, 219, width, 5)
+					p.gradient(50, 178, width, 5)
 					gdi.NewProc("RestoreDC").Call(p.dc, saved)
 					gdi.NewProc("DeleteObject").Call(region)
 				}
 			}
 		case "device":
-			p.round(32, 182, 336, 170, 12, c.input, c.border)
+			p.round(32, 126, 336, 170, 12, c.input, c.border)
 		case "token":
 			border := c.border
 			if proc("GetFocus") == w.control(idToken) {
 				border = c.accent
 			}
-			p.round(60, 265, 280, 40, 10, c.input, border)
+			p.round(60, 163, 280, 40, 10, c.input, border)
 		case "settings":
-			p.round(32, 118, 336, 88, 12, c.panel, c.border)
-			p.round(32, 218, 336, 88, 12, c.panel, c.border)
+			p.round(32, 114, 336, 80, 12, c.panel, c.border)
+			p.round(32, 206, 336, 80, 12, c.panel, c.border)
 		}
 	})
 }
@@ -418,26 +418,26 @@ func (w *Window) paintControl(c control, dc uintptr) {
 			p.text(title, 0, 0, c.w, c.h, w.heading, fg, 0x824)
 		case idClaude, idCodex:
 			p.round(0, 0, c.w, c.h, 12, colors.panel, colors.border)
-			p.round(18, 24, 32, 32, 8, colors.tile, colors.border)
+			p.round(18, 20, 32, 32, 8, colors.tile, colors.border)
 			if c.id == idClaude {
-				p.artwork("claude", 24, 30, 20, colors.tile, 0xd97757, true)
+				p.artwork("claude", 24, 26, 20, colors.tile, 0xd97757, true)
 			} else {
-				p.artwork("codex", 22, 28, 24, colors.tile, 0, false)
+				p.artwork("codex", 22, 24, 24, colors.tile, 0, false)
 			}
-			p.text(title, 62, 20, 180, 20, w.small, colors.muted, 0x24)
+			p.text(title, 62, 16, 180, 20, w.small, colors.muted, 0x24)
 			on := proc("SendMessageW", c.handle, 0xf0, 0, 0) == 1
 			word, dot := "Paused", colors.muted
 			if on {
 				word, dot = "Active", colors.accent
 			}
-			p.round(66, 48, 8, 8, 4, dot, dot)
-			p.text(word, 82, 40, 120, 24, w.font, fg, 0x824)
+			p.round(66, 44, 8, 8, 4, dot, dot)
+			p.text(word, 82, 36, 120, 24, w.font, fg, 0x824)
 			track, knob := colors.toggle, 2
 			if on {
 				track, knob = colors.on, 22
 			}
-			p.round(273, 28, 44, 24, 12, track, colors.border)
-			p.round(273+knob, 31, 18, 18, 9, colors.knob, colors.knob)
+			p.round(273, 24, 44, 24, 12, track, colors.border)
+			p.round(273+knob, 27, 18, 18, 9, colors.knob, colors.knob)
 		case idStartup, idTray:
 			p.round(0, 0, c.w, c.h, 12, colors.panel, colors.border)
 			p.text(title, 16, 12, 256, 24, w.bold, fg, 0x24)

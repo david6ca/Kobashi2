@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/xjin6/kobashi/internal/bridge"
+	"github.com/david6ca/Kobashi2/internal/bridge"
 )
 
 func FocusExisting() bool      { return false }
