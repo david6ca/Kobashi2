@@ -73,9 +73,37 @@ check(!service.isRunning && service.terminationStatus == 0,
       "Explicit application termination closes its own child input gracefully")
 check(subject.controls["token"] is NSSecureTextField,
       "Token entry uses a native protected text field")
+/*
+check(subject.controls["remoteToken"] is NSSecureTextField &&
+      subject.controls["serverToken"] is NSSecureTextField,
+      "Client and Server access tokens use protected native fields")
+subject.clientView()
+check(subject.controls["remoteURL"]?.isHidden == false &&
+      subject.controls["remoteConnect"]?.isHidden == false &&
+      subject.controls["networkDone"]?.isHidden == false,
+      "Client connection controls are reachable without GitHub login")
+check((subject.controls["remoteURL"] as? NSTextField)?.accessibilityLabel() == "Server URL",
+      "The Server URL has an accessible name")
+subject.networkDone()
+subject.serverView()
+check(subject.controls["listen"]?.isHidden == false &&
+      subject.controls["serverToggle"]?.isHidden == false,
+      "Server sharing controls are reachable from Settings")
+subject.networkDone()
+check(subject.controls["clientView"]?.isHidden == false &&
+      subject.controls["remoteURL"]?.isHidden == true,
+      "Back restores Settings and hides Client input")
+*/
+for key in ["clientView", "serverView", "remoteURL", "remoteToken", "remoteConnect",
+            "discover", "listen", "serverToken", "serverToggle", "serverCopy", "networkDone"] {
+    check(subject.controls[key] == nil, "Network control \(key) is absent")
+}
 check(subject.controls["startup"] is NSButton &&
       (subject.controls["startup"] as? NSButton)?.action == #selector(AppDelegate.saveStartup),
       "Startup uses a native checkbox")
+check((subject.controls["startup"] as? NSButton)?.state == .off &&
+      (subject.controls["tray"] as? NSButton)?.state == .on,
+      "Login startup is opt-in and closing to tray is enabled by default")
 check((subject.controls["startup"] as? NSButton)?.accessibilityRole() == .checkBox,
       "Custom styling preserves native checkbox accessibility")
 check(subject.controls["settings"]?.frame == NSRect(x: 296, y: 24, width: 32, height: 32),
@@ -94,9 +122,10 @@ for (key, title, action) in [
           (subject.controls[key] as? NSButton)?.accessibilityRole() == .button,
           "The \(key) status retains its native accessible name and action")
 }
-check(subject.controls["claude"]?.frame == NSRect(x: 32, y: 247, width: 336, height: 80) &&
-      subject.controls["codex"]?.frame == NSRect(x: 32, y: 339, width: 336, height: 80),
-      "The two bridge cards preserve the original layout and order")
+check(subject.controls["claude"]?.frame == NSRect(x: 40, y: 257, width: 320, height: 50) &&
+      subject.controls["codex"]?.frame == NSRect(x: 40, y: 307, width: 320, height: 50) &&
+      subject.controls["copilot"]?.frame == NSRect(x: 40, y: 357, width: 320, height: 50),
+      "The three Bridge rows share one padded group in the same order")
 check(subject.controls["startup"]?.frame == NSRect(x: 32, y: 118, width: 336, height: 88) &&
       subject.controls["tray"]?.frame == NSRect(x: 32, y: 218, width: 336, height: 88),
       "Settings uses consistently padded cards")
@@ -130,15 +159,56 @@ check(subject.controls["connect"]?.isHidden == false && subject.controls["token"
 check((subject.controls["login"] as? NSButton)?.isEnabled == false,
       "Connect remains disabled for an empty token")
 subject.currentView = "connected"
-subject.status = ["username": "example", "claudeEnabled": true, "codexEnabled": false]
+subject.status = ["username": "example", "claudeEnabled": true, "codexEnabled": false,
+                  "copilotEnabled": true, "copilotURL": "http://127.0.0.1:18925/v1"]
 subject.render()
+check((subject.controls["copilot"] as? NSButton)?.accessibilityRole() == .checkBox &&
+      (subject.controls["copilot"] as? NSButton)?.accessibilityLabel() == "Copilot Bridge" &&
+      (subject.controls["copilot"] as? NSButton)?.state == .on,
+      "Copilot Bridge exposes its native checkbox name and enabled state")
+check(subject.controls["copilotCopy"] == nil, "The Copilot setup copy action is absent")
 check(subject.controls["usageLabel"]?.isHidden == true && subject.controls["usageValue"]?.isHidden == true,
       "Unavailable usage is hidden rather than displaying zero credits")
 for appearance in ["light", "dark"] {
     subject.status["appearance"] = appearance
     subject.render()
-    check(subject.window.contentView?.bounds.size == NSSize(width: 400, height: 480),
-          "The \(appearance) appearance keeps the original fixed dimensions")
+    let top = subject.window.frame.maxY
+    for _ in 0..<3 {
+        subject.render()
+        check(subject.window.contentView?.bounds.size == NSSize(width: 400, height: 407) &&
+              subject.controls["account"]?.frame.minY == 92 &&
+              subject.controls["claude"]?.frame.minY == 184 &&
+              subject.controls["project"]?.frame.minY == 373 &&
+              subject.controls["notice"]?.isHidden == true,
+              "The \(appearance) homepage has no empty notice gap or cumulative layout shift")
+    }
+    check(subject.controls["claude"]!.frame.minY - 6 - (235 - subject.connectedOffset) == 16 &&
+          subject.controls["codex"]!.frame.minY == subject.controls["claude"]!.frame.maxY &&
+          subject.controls["copilot"]!.frame.minY == subject.controls["codex"]!.frame.maxY,
+          "The unified Bridge group stays 16 points below the account panel")
+    for source in ["notice", "error"] {
+        if source == "notice" { subject.notice = "Settings saved." }
+        else { subject.status["error"] = "GitHub needs authorization." }
+        subject.render()
+        check(subject.window.contentView?.bounds.size == NSSize(width: 400, height: 439) &&
+              subject.controls["notice"]?.isHidden == false &&
+              subject.controls["notice"]!.frame.maxY < subject.controls["account"]!.frame.minY - 20,
+              "The \(appearance) homepage makes room for an active \(source) above the account card")
+        subject.notice = ""
+        subject.status.removeValue(forKey: "error")
+        subject.render()
+    }
+    check(subject.window.frame.maxY == top, "Resizing the homepage preserves the window's top edge")
+    check(subject.window.contentView!.subviews.filter { !$0.isHidden }.allSatisfy {
+        subject.window.contentView!.bounds.contains($0.frame)
+    }, "All visible homepage controls fit without clipping")
+    subject.currentView = "settings"
+    subject.render()
+    check(subject.window.contentView?.bounds.size == NSSize(width: 400, height: 480) &&
+          subject.controls["project"]?.frame.minY == 446,
+          "Settings retains its full height and footer position")
+    subject.currentView = "connected"
+    subject.render()
 }
 subject.status["username"] = "xjin6"
 subject.status["version"] = "2.1.6"

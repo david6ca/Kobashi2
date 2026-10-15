@@ -101,7 +101,8 @@ func (a *App) startWatcher() {
 			defer timer.Stop()
 			var previous map[string]bool
 			poll := func() {
-				if a.snapshot().Token == "" || !a.snapshot().Codex {
+				state := a.snapshot()
+				if !state.active() || !state.Codex {
 					previous = nil
 					return
 				}
@@ -128,6 +129,17 @@ func (a *App) startWatcher() {
 					}
 				}
 				if started {
+					/*
+						if state.RemoteURL != "" {
+							ctx, cancel := context.WithTimeout(a.ctx, 2*time.Minute)
+							err := a.refreshRemoteCatalog(ctx, state)
+							cancel()
+							if err != nil {
+								a.report(err)
+							}
+							return
+						}
+					*/
 					a.models.mu.Lock()
 					adopt := a.models.sessionStarted && (initial || a.models.awaitingClient)
 					a.models.awaitingClient = false

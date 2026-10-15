@@ -53,6 +53,20 @@ const (
 	idQuit
 	idTheme
 	idProject
+	/*
+		idClientView
+		idServerView
+		idRemoteURL
+		idRemoteToken
+		idRemoteConnect
+		idDiscover
+		idListen
+		idServerToken
+		idServerToggle
+		idServerCopy
+		idNetworkDone
+	*/
+	idCopilot
 )
 
 type point struct{ X, Y int32 }
@@ -95,6 +109,7 @@ type control struct {
 	id         int
 	view       string
 	x, y, w, h int
+	baseY      int
 	title      string
 	class      string
 	previous   uintptr
@@ -129,6 +144,7 @@ type Window struct {
 	palette                                                                                    palette
 	artwork                                                                                    map[string]image.Image
 	taskbar                                                                                    uint32
+	// discovered []map[string]any
 }
 
 //go:uintptrescapes
@@ -186,7 +202,7 @@ func (w *Window) add(class, title, view string, id, x, y, width, height int, sty
 	if h == 0 {
 		return fmt.Errorf("create %s control: %w", class, err)
 	}
-	w.controls = append(w.controls, control{handle: h, id: id, view: view, x: x, y: y, w: width, h: height, title: title, class: class})
+	w.controls = append(w.controls, control{handle: h, id: id, view: view, x: x, y: y, baseY: y, w: width, h: height, title: title, class: class})
 	proc("SendMessageW", h, 0x30, w.font, 1)
 	if class == "BUTTON" || class == "STATIC" || class == "EDIT" {
 		previous := proc("SetWindowLongPtrW", h, ^uintptr(3), controlCallback)
@@ -219,13 +235,33 @@ func (w *Window) build() error {
 		{"STATIC", "", "connected", 7, 50, 119, 175, 27, 0},
 		{"BUTTON", "Connecte&d", "connected", idDisconnect, 255, 119, 94, 28, 0x10000},
 		{"STATIC", "", "connected", 8, 50, 160, 299, 16, 0},
-		{"BUTTON", "C&laude Bridge", "connected", idClaude, 32, 206, 336, 72, 0x10000 | 3},
-		{"BUTTON", "&Codex Bridge", "connected", idCodex, 32, 290, 336, 72, 0x10000 | 3},
+		{"BUTTON", "C&laude Bridge", "connected", idClaude, 40, 216, 320, 44, 0x10000 | 3},
+		{"BUTTON", "&Codex Bridge", "connected", idCodex, 40, 260, 320, 44, 0x10000 | 3},
+		{"BUTTON", "Copilot &Bridge", "connected", idCopilot, 40, 304, 320, 44, 0x10000 | 3},
 		{"STATIC", "Settings", "settings", 9, 32, 70, 260, 32, 0},
 		{"BUTTON", "&Start at login", "settings", idStartup, 32, 114, 336, 80, 0x10000 | 3},
 		{"STATIC", "Start Kobashi when you sign in to your computer.", "settings", 10, 48, 152, 268, 34, 0x100},
 		{"BUTTON", "&Close to system tray", "settings", idTray, 32, 206, 336, 80, 0x10000 | 3},
 		{"STATIC", "Keep bridges running when the window is closed.", "settings", 11, 48, 244, 268, 34, 0x100},
+		/*
+			{"BUTTON", "Connect to &Server", "settings", idClientView, 32, 294, 164, 28, 0x10000},
+			{"BUTTON", "Share this &Kobashi", "settings", idServerView, 204, 294, 164, 28, 0x10000},
+			{"STATIC", "Connect to Server", "client", 20, 32, 70, 336, 28, 0},
+			{"STATIC", "Server URL", "client", 21, 32, 112, 336, 20, 0},
+			{"EDIT", "", "client", idRemoteURL, 32, 136, 336, 26, 0x10000 | 0x80 | 0x800000},
+			{"STATIC", "Server access token", "client", 22, 32, 172, 336, 20, 0},
+			{"EDIT", "", "client", idRemoteToken, 32, 196, 336, 26, 0x10000 | 0x80 | 0x20 | 0x800000},
+			{"BUTTON", "&Find Servers", "client", idDiscover, 32, 238, 164, 32, 0x10000},
+			{"BUTTON", "&Connect", "client", idRemoteConnect, 204, 238, 164, 32, 0x10000},
+			{"STATIC", "Share this Kobashi", "server", 23, 32, 70, 336, 28, 0},
+			{"STATIC", "Listen IP:port", "server", 24, 32, 112, 336, 20, 0},
+			{"EDIT", "", "server", idListen, 32, 136, 336, 26, 0x10000 | 0x80 | 0x800000},
+			{"STATIC", "Access token (blank keeps or generates one)", "server", 25, 32, 172, 336, 20, 0},
+			{"EDIT", "", "server", idServerToken, 32, 196, 336, 26, 0x10000 | 0x80 | 0x20 | 0x800000},
+			{"BUTTON", "&Enable Server", "server", idServerToggle, 32, 238, 164, 32, 0x10000},
+			{"BUTTON", "Copy &token", "server", idServerCopy, 204, 238, 164, 32, 0x10000},
+			{"BUTTON", "&Back", "network", idNetworkDone, 32, 328, 336, 32, 0x10000},
+		*/
 		{"STATIC", "", "all", 12, 32, 252, 336, 70, 0},
 		{"BUTTON", "&Done", "settings", idDone, 32, 328, 336, 32, 0x10000},
 		{"BUTTON", "&Quit Kobashi", "settings", idQuit, 32, 368, 112, 24, 0x10000},
@@ -239,6 +275,11 @@ func (w *Window) build() error {
 	w.fonts()
 	proc("SendMessageW", w.control(idToken), 0xc5, 8192, 0)
 	proc("SendMessageW", w.control(idToken), 0x1501, 1, uintptr(unsafe.Pointer(wide("Paste your access token"))))
+	/*
+		for _, id := range []int{idRemoteURL, idRemoteToken, idListen, idServerToken} {
+			proc("SendMessageW", w.control(id), 0xc5, 8192, 0)
+		}
+	*/
 	return nil
 }
 func (w *Window) fonts() {
@@ -376,11 +417,24 @@ func (w *Window) refresh() {
 }
 func (w *Window) render() {
 	w.layout()
+	var client rect
+	proc("GetClientRect", w.Handle, uintptr(unsafe.Pointer(&client)))
+	if int(client.Bottom) != w.contentHeight()*w.dpi/96 {
+		r := w.windowBounds(w.Handle)
+		proc("SetWindowPos", w.Handle, 0, 0, 0, uintptr(r.Right-r.Left), uintptr(r.Bottom-r.Top), 0x2|0x4|0x10)
+	}
 	for _, c := range w.controls {
 		show := c.view == "all" || c.view == w.view || (c.view == "sign-in" && (w.view == "idle" || w.view == "token"))
+		// || (c.view == "network" && (w.view == "client" || w.view == "server"))
 		if c.id == 8 {
 			_, _, show = w.usage()
 			show = show && w.view == "connected"
+		}
+		if c.id == 12 && w.view == "connected" {
+			show = w.connectedOffset() == 0
+		}
+		if c.id == 9 && (w.notice != "" || text(w.status["error"]) != "" || text(w.settings["error"]) != "") {
+			show = false
 		}
 		visible := uintptr(0)
 		if show {
@@ -395,6 +449,11 @@ func (w *Window) render() {
 			if c.id == idLogin && w.tokenValue() == "" {
 				enabled = 0
 			}
+			/*
+				if c.id == idRemoteConnect && (w.fieldValue(idRemoteURL) == "" || w.fieldValue(idRemoteToken) == "") {
+					enabled = 0
+				}
+			*/
 			proc("EnableWindow", c.handle, enabled)
 		}
 	}
@@ -407,10 +466,25 @@ func (w *Window) render() {
 	}
 	check(idCodex, w.status["codexEnabled"])
 	check(idClaude, w.status["claudeEnabled"])
+	check(idCopilot, w.status["copilotEnabled"])
 	check(idStartup, w.settings["startAtLogin"])
 	check(idTray, w.settings["closeToTray"])
 	w.setText(6, w.code)
-	w.setText(7, "@"+text(w.status["username"]))
+	account := "@" + text(w.status["username"])
+	/*
+		if w.status["authMethod"] == "remote" {
+			account = "Server: " + text(w.status["username"])
+		}
+	*/
+	w.setText(7, account)
+	/*
+		server := object(w.status["server"])
+		serverAction := "&Enable Server"
+		if server["enabled"] == true {
+			serverAction = "&Disable Server"
+		}
+		w.setText(idServerToggle, serverAction)
+	*/
 	if used, total, ok := w.usage(); ok {
 		w.setText(8, "AI credits this cycle     "+credits(used)+" / "+credits(total))
 	}
@@ -425,7 +499,13 @@ func (w *Window) render() {
 		notice = text(w.settings["error"])
 	}
 	if notice == "" && w.view == "settings" {
-		notice = "Changes are saved automatically."
+		notice = ""
+		/*
+			} else if notice == "" && w.view == "client" {
+				notice = "No GitHub sign-in needed. Disconnect the current source before connecting."
+			} else if notice == "" && w.view == "server" {
+				notice = "Requires GitHub. Share only on a trusted LAN; use HTTPS for public access."
+		*/
 	} else if notice == "" && w.view == "device" {
 		notice = "Waiting for authorization..."
 	}
@@ -441,6 +521,7 @@ func (w *Window) accept(e event) {
 		if e.value != nil {
 			w.status = e.value
 			if w.view != "settings" && w.status["connected"] == true {
+				// && w.view != "client" && w.view != "server"
 				w.view = "connected"
 			}
 			if w.view == "connected" && w.status["connected"] != true {
@@ -515,6 +596,40 @@ func (w *Window) accept(e event) {
 	case "/api/settings":
 		w.settings = e.value
 		w.notice = "Settings saved."
+	/*
+		case "/api/server":
+			w.setText(idServerToken, text(e.value["token"]))
+			w.notice = "Server settings saved."
+			w.refresh()
+		case "copy-server-token":
+			token := text(e.value["token"])
+			if token == "" {
+				w.notice = "Enable Server to generate an access token."
+			} else if err := copyClipboard(w.Handle, token); err != nil {
+				w.notice = err.Error()
+			} else {
+				w.notice = "Token copied. Share it privately."
+			}
+		case "/api/discover":
+			values, _ := e.value["servers"].([]any)
+			w.discovered = nil
+			for _, value := range values {
+				if server := object(value); server != nil {
+					w.discovered = append(w.discovered, server)
+				}
+			}
+			if len(w.discovered) == 0 {
+				w.notice = "No Servers found. Enter a Server URL manually."
+			} else {
+				w.render()
+				w.chooseServer()
+			}
+		case "/api/remote-connect":
+			w.view = "connected"
+			w.setText(idRemoteToken, "")
+			w.focus = w.control(idClaude)
+			w.refresh()
+	*/
 	case "/api/disconnect":
 		w.view = "idle"
 		w.focus = w.control(idConnect)
@@ -581,6 +696,8 @@ func (w *Window) command(id int) {
 		w.post("/api/toggle-codex", map[string]any{})
 	case idClaude:
 		w.post("/api/toggle-claude", map[string]any{})
+	case idCopilot:
+		w.post("/api/toggle-copilot", map[string]any{})
 	case idDisconnect:
 		w.post("/api/disconnect", map[string]any{})
 	case idSettings:
@@ -588,6 +705,37 @@ func (w *Window) command(id int) {
 		w.notice = ""
 		w.render()
 		proc("SetFocus", w.control(idStartup))
+	/*
+		case idClientView:
+			w.view, w.notice = "client", ""
+			w.setText(idRemoteURL, text(w.status["remoteURL"]))
+			w.render()
+			proc("SetFocus", w.control(idRemoteURL))
+		case idServerView:
+			w.view, w.notice = "server", ""
+			w.setText(idListen, text(object(w.status["server"])["listen"]))
+			w.render()
+			proc("SetFocus", w.control(idListen))
+		case idNetworkDone:
+			w.view, w.notice = "settings", ""
+			w.setText(idServerToken, "")
+			w.setText(idRemoteToken, "")
+			w.render()
+			proc("SetFocus", w.control(idClientView))
+		case idDiscover:
+			w.post("/api/discover", map[string]any{})
+		case idRemoteConnect:
+			w.post("/api/remote-connect", map[string]any{"url": w.fieldValue(idRemoteURL), "token": w.fieldValue(idRemoteToken)})
+		case idServerToggle:
+			w.post("/api/server", map[string]any{"enabled": object(w.status["server"])["enabled"] != true,
+				"listen": w.fieldValue(idListen), "token": w.fieldValue(idServerToken)})
+		case idServerCopy:
+			go func() {
+				value, err := w.request("/api/server", nil)
+				w.events <- event{path: "copy-server-token", value: value, err: err}
+				proc("PostMessageW", w.Handle, eventMessage, 0, 0)
+			}()
+	*/
 	case idStartup, idTray:
 		key := "startAtLogin"
 		if id == idTray {
@@ -610,6 +758,30 @@ func (w *Window) command(id int) {
 		w.quit()
 	}
 }
+
+/*
+	func (w *Window) fieldValue(id int) string {
+		buffer := make([]uint16, 8193)
+		proc("GetWindowTextW", w.control(id), uintptr(unsafe.Pointer(&buffer[0])), uintptr(len(buffer)))
+		return strings.TrimSpace(syscall.UTF16ToString(buffer))
+	}
+
+	func (w *Window) chooseServer() {
+		menu := proc("CreatePopupMenu")
+		defer proc("DestroyMenu", menu)
+		for i, server := range w.discovered {
+			proc("AppendMenuW", menu, 0, uintptr(i+1), uintptr(unsafe.Pointer(wide(text(server["name"])+" - "+text(server["url"])))))
+		}
+		var r rect
+		proc("GetWindowRect", w.control(idDiscover), uintptr(unsafe.Pointer(&r)))
+		selected := proc("TrackPopupMenu", menu, 0x100, uintptr(r.Left), uintptr(r.Bottom), 0, w.Handle, 0)
+		if selected > 0 && int(selected) <= len(w.discovered) {
+			w.setText(idRemoteURL, text(w.discovered[selected-1]["url"]))
+			w.focus = w.control(idRemoteToken)
+			w.notice = "Server selected. Enter its access token."
+		}
+	}
+*/
 func copyClipboard(hwnd uintptr, text string) error {
 	if proc("OpenClipboard", hwnd) == 0 {
 		return errors.New("clipboard is busy")
@@ -656,7 +828,7 @@ func (w *Window) windowBounds(hwnd uintptr) rect {
 	if frameDPI == 0 {
 		frameDPI = uintptr(w.dpi)
 	}
-	r := rect{Right: int32(windowWidth * w.dpi / 96), Bottom: int32(windowHeight * w.dpi / 96)}
+	r := rect{Right: int32(windowWidth * w.dpi / 96), Bottom: int32(w.contentHeight() * w.dpi / 96)}
 	adjust := user.NewProc("AdjustWindowRectExForDpi")
 	if adjust.Find() == nil {
 		adjust.Call(uintptr(unsafe.Pointer(&r)), style, 0, extended, frameDPI)
@@ -668,9 +840,8 @@ func (w *Window) windowBounds(hwnd uintptr) rect {
 func (w *Window) fixedSize(x, y int) {
 	r := w.windowBounds(w.Handle)
 	proc("SetWindowPos", w.Handle, 0, uintptr(x), uintptr(y), uintptr(r.Right-r.Left), uintptr(r.Bottom-r.Top), 0x4|0x10)
-	for _, c := range w.controls {
-		proc("MoveWindow", c.handle, uintptr(c.x*w.dpi/96), uintptr(c.y*w.dpi/96), uintptr(c.w*w.dpi/96), uintptr(c.h*w.dpi/96), 1)
-	}
+	w.layout()
+	proc("RedrawWindow", w.Handle, 0, 0, 0x85)
 }
 func (w *Window) trayMenu() {
 	menu := proc("CreatePopupMenu")
@@ -777,7 +948,8 @@ func windowProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 	case 0x111:
 		if wp>>16 == 0 {
 			w.command(int(wp & 0xffff))
-		} else if int(wp&0xffff) == idToken && wp>>16 == 0x300 && w.view == "token" {
+		} else if wp>>16 == 0x300 && int(wp&0xffff) == idToken {
+			// || int(wp&0xffff) == idRemoteURL || int(wp&0xffff) == idRemoteToken
 			w.notice = ""
 			w.render()
 		}
@@ -897,7 +1069,7 @@ func Run(app *bridge.App, hidden bool) error {
 	} else {
 		proc("SetProcessDPIAware")
 	}
-	w := &Window{app: app, view: "idle", dpi: 96, events: make(chan event, 32), status: map[string]any{}, settings: map[string]any{"startAtLogin": true, "closeToTray": true}, client: &http.Client{Transport: &http.Transport{Proxy: nil}}}
+	w := &Window{app: app, view: "idle", dpi: 96, events: make(chan event, 32), status: map[string]any{}, settings: map[string]any{"startAtLogin": false, "closeToTray": true}, client: &http.Client{Transport: &http.Transport{Proxy: nil}}}
 	if err := w.loadArtwork(); err != nil {
 		return err
 	}
@@ -949,7 +1121,14 @@ func Run(app *bridge.App, hidden bool) error {
 			break
 		}
 		if msg.Message == 0x100 && msg.WParam == 0x1b && (w.view == "settings" || w.view == "token" || w.view == "device") {
+			// || w.view == "client" || w.view == "server"
+			/*
+				if w.view == "client" || w.view == "server" {
+					w.command(idNetworkDone)
+				} else {
+			*/
 			w.command(idDone)
+			// }
 			continue
 		}
 		if msg.Message == 0x100 && msg.WParam == 0xd {

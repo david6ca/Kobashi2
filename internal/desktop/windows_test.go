@@ -57,7 +57,7 @@ func TestNativeWindowControlsSizeSettingsAndTrayLifecycle(t *testing.T) {
 	}
 	home := t.TempDir()
 	a, err := bridge.New(bridge.Options{Home: home, CodexHome: filepath.Join(home, ".codex"), Desktop: true,
-		Ports: bridge.Ports{Codex: freePort(t), Control: freePort(t), Claude: freePort(t)}, Startup: func(bool) error { return nil },
+		Ports: bridge.Ports{Codex: freePort(t), Control: freePort(t), Claude: freePort(t), Copilot: freePort(t)}, Startup: func(bool) error { return nil },
 		ReadEnvironment:  func(string) (*string, error) { t.Fatal("unexpected user environment access"); return nil, nil },
 		WriteEnvironment: func(string, *string) error { t.Fatal("unexpected user environment mutation"); return nil }})
 	if err != nil {
@@ -102,13 +102,16 @@ func TestNativeWindowControlsSizeSettingsAndTrayLifecycle(t *testing.T) {
 	if style&(0x40000|0x10000) != 0 {
 		t.Fatal("resize or maximize enabled")
 	}
-	for id, class := range map[int]string{idToken: "Edit", idStartup: "Button", idTray: "Button", idSettings: "Button"} {
+	for id, class := range map[int]string{idToken: "Edit", idStartup: "Button", idTray: "Button", idSettings: "Button", idCopilot: "Button"} {
 		child := proc("GetDlgItem", h, uintptr(id))
 		buf := make([]uint16, 64)
 		proc("GetClassNameW", child, uintptr(unsafe.Pointer(&buf[0])), 64)
 		if !strings.EqualFold(syscall.UTF16ToString(buf), class) {
 			t.Fatal("non-native control", id)
 		}
+	}
+	if proc("FindWindowExW", h, 0, 0, uintptr(unsafe.Pointer(wide("Copy Copilot set&up")))) != 0 {
+		t.Fatal("Copilot setup copy action is still present")
 	}
 	if proc("GetWindowLongW", proc("GetDlgItem", h, idToken), ^uintptr(15))&0x20 == 0 {
 		t.Fatal("token field is not protected")
@@ -125,14 +128,14 @@ func TestNativeWindowControlsSizeSettingsAndTrayLifecycle(t *testing.T) {
 		t.Fatal("token typing did not enable Connect")
 	}
 	proc("SendMessageW", h, 0x111, idSettings, 0)
-	for _, id := range []int{idStartup, idTray} {
-		if proc("SendMessageW", proc("GetDlgItem", h, uintptr(id)), 0xf0, 0, 0) != 1 {
-			t.Fatal("settings are not enabled by default", id)
+	for id, checked := range map[int]uintptr{idStartup: 0, idTray: 1} {
+		if proc("SendMessageW", proc("GetDlgItem", h, uintptr(id)), 0xf0, 0, 0) != checked {
+			t.Fatal("incorrect default checkbox state", id)
 		}
 	}
 	proc("SendMessageW", proc("GetDlgItem", h, idStartup), 0xf5, 0, 0)
-	waitFor(t, func() bool { return !a.Settings().StartAtLogin })
-	if data, err := os.ReadFile(filepath.Join(home, ".kobashi", "settings.json")); err != nil || !strings.Contains(string(data), `"startAtLogin": false`) {
+	waitFor(t, func() bool { return a.Settings().StartAtLogin })
+	if data, err := os.ReadFile(filepath.Join(home, ".kobashi", "settings.json")); err != nil || !strings.Contains(string(data), `"startAtLogin": true`) {
 		t.Fatal("setting was not persisted", err)
 	}
 	proc("SendMessageW", h, 0x111, idDone, 0)
@@ -140,7 +143,7 @@ func TestNativeWindowControlsSizeSettingsAndTrayLifecycle(t *testing.T) {
 		proc("GetWindowLongW", proc("GetDlgItem", h, idConnect), ^uintptr(15))&0x10000000 == 0 {
 		t.Fatal("Done did not close Settings without quitting")
 	}
-	if a.Settings().StartAtLogin {
+	if !a.Settings().StartAtLogin {
 		t.Fatal("Done discarded the saved setting")
 	}
 	proc("SendMessageW", h, 0x111, idSettings, 0)
@@ -149,6 +152,47 @@ func TestNativeWindowControlsSizeSettingsAndTrayLifecycle(t *testing.T) {
 		return proc("GetWindowLongW", proc("GetDlgItem", h, idDone), ^uintptr(15))&0x10000000 == 0
 	})
 	proc("SendMessageW", h, 0x111, idSettings, 0)
+	/*
+		for _, entry := range []struct {
+			view    int
+			fields  []int
+			buttons []int
+		}{
+			{idClientView, []int{idRemoteURL, idRemoteToken}, []int{idDiscover, idRemoteConnect}},
+			{idServerView, []int{idListen, idServerToken}, []int{idServerToggle, idServerCopy}},
+		} {
+			proc("SendMessageW", h, 0x111, uintptr(entry.view), 0)
+			for _, id := range append(append([]int{}, entry.fields...), append(entry.buttons, idNetworkDone)...) {
+				child := proc("GetDlgItem", h, uintptr(id))
+				if child == 0 || proc("GetWindowLongW", child, ^uintptr(15))&0x10000000 == 0 {
+					t.Fatal("connection control is missing or hidden", id)
+				}
+				var bounds rect
+				proc("GetWindowRect", child, uintptr(unsafe.Pointer(&bounds)))
+				proc("MapWindowPoints", 0, h, uintptr(unsafe.Pointer(&bounds)), 2)
+				if bounds.Left < 0 || bounds.Top < 0 || bounds.Right > int32(windowWidth*int(dpi)/96) || bounds.Bottom > int32(windowHeight*int(dpi)/96) {
+					t.Fatal("connection control is clipped", id, bounds)
+				}
+			}
+			for _, id := range entry.fields {
+				child := proc("GetDlgItem", h, uintptr(id))
+				if id == idRemoteToken || id == idServerToken {
+					if proc("GetWindowLongW", child, ^uintptr(15))&0x20 == 0 {
+						t.Fatal("Server token field is not protected", id)
+					}
+				}
+			}
+			proc("SendMessageW", h, 0x111, idNetworkDone, 0)
+			if proc("GetWindowLongW", proc("GetDlgItem", h, idClientView), ^uintptr(15))&0x10000000 == 0 {
+				t.Fatal("Back did not restore Settings")
+			}
+		}
+	*/
+	for _, title := range []string{"Connect to &Server", "Share this &Kobashi"} {
+		if proc("FindWindowExW", h, 0, 0, uintptr(unsafe.Pointer(wide(title)))) != 0 {
+			t.Fatal("network settings entry is still present", title)
+		}
+	}
 	proc("ShowWindow", h, 4)
 	proc("SendMessageW", h, 0x10, 0, 0)
 	if proc("IsWindowVisible", h) != 0 {

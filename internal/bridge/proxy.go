@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"bytes"
+	"crypto/subtle"
 	"encoding/json"
 	"io"
 	"log"
@@ -11,12 +12,66 @@ import (
 )
 
 func (a *App) codex(w http.ResponseWriter, r *http.Request) {
+	a.openAI(w, r, false)
+}
+func (a *App) copilotApp(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("Origin") != "" {
+		respond(w, 403, object{"error": "Browser origins are not allowed"})
+		return
+	}
+	if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer PROXY_MANAGED")) != 1 {
+		respond(w, 401, object{"error": "Set the Kobashi provider API key to PROXY_MANAGED"})
+		return
+	}
+	a.openAI(w, r, true)
+}
+func (a *App) openAI(w http.ResponseWriter, r *http.Request, copilotApp bool) {
 	state := a.snapshot()
-	if state.Token == "" || !state.Codex {
-		respond(w, 401, object{"error": "Codex bridge not active"})
+	name, enabled := "Codex", state.Codex
+	// protocol := "codex"
+	if copilotApp {
+		name, enabled = "Copilot", state.Copilot
+		// protocol = "copilot"
+		if !((r.Method == "GET" && r.URL.Path == "/v1/models") ||
+			(r.Method == "POST" && contains([]string{"/v1/responses", "/v1/responses/compact", "/v1/chat/completions"}, r.URL.Path))) {
+			respond(w, 404, object{"error": "Inference endpoint not found"})
+			return
+		}
+	}
+	/*
+		if state.RemoteURL != "" {
+			a.forwardRemote(w, r, state, protocol, enabled)
+			return
+		}
+	*/
+	if state.Token == "" || !enabled {
+		respond(w, 401, object{"error": name + " bridge not active"})
 		return
 	}
 	if r.Method == "GET" && r.URL.Path == "/v1/models" {
+		if copilotApp {
+			raw, err := a.discover(r.Context(), false)
+			if err != nil {
+				respond(w, 502, object{"error": err.Error()})
+				return
+			}
+			out := []object{}
+			for _, model := range raw {
+				if str(model["id"]) != "" {
+					value := clone(model)
+					value["object"] = "model"
+					value["created"] = number(model["created"])
+					owner := str(model["vendor"])
+					if owner == "" {
+						owner = "copilot"
+					}
+					value["owned_by"] = owner
+					out = append(out, value)
+				}
+			}
+			respond(w, 200, object{"object": "list", "data": out})
+			return
+		}
 		if err := a.models.ensureSession(r.Context()); err != nil {
 			log.Printf("Codex model startup: %v", err)
 		}
@@ -46,19 +101,27 @@ func (a *App) codex(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.UseNumber()
 	if r.Method == "POST" && strings.Contains(r.URL.Path, "/responses") && decoder.Decode(&requestBody) == nil && requestBody != nil && decoder.Decode(new(any)) == io.EOF {
-		if err := a.models.ensureSession(r.Context()); err != nil {
-			log.Printf("Codex capability lookup: %v", err)
-		}
-		rules, t := a.models.requestRules(str(requestBody["model"]))
-		token = t
-		if normalized, changed := applyConstraints(requestBody, rules); changed {
-			requestBody = normalized
-			body = jsonBytes(normalized)
+		if !copilotApp {
+			if err := a.models.ensureSession(r.Context()); err != nil {
+				log.Printf("Codex capability lookup: %v", err)
+			}
+			rules, t := a.models.requestRules(str(requestBody["model"]))
+			token = t
+			if normalized, changed := applyConstraints(requestBody, rules); changed {
+				requestBody = normalized
+				body = jsonBytes(normalized)
+			}
 		}
 	}
 	path := r.URL.RequestURI()
 	if !strings.HasPrefix(path, "/v1") {
 		path = "/v1" + path
+	}
+	if copilotApp && r.URL.Path == "/v1/chat/completions" {
+		path = "/chat/completions"
+		if r.URL.RawQuery != "" {
+			path += "?" + r.URL.RawQuery
+		}
 	}
 	authRetried := false
 	for attempt := 0; attempt < 4; attempt++ {
@@ -75,12 +138,16 @@ func (a *App) codex(w http.ResponseWriter, r *http.Request) {
 			}
 			var errorBody object
 			_ = json.Unmarshal(data, &errorBody)
-			a.models.observe(str(requestBody["model"]), token, response.StatusCode, errorBody, nil)
+			if !copilotApp {
+				a.models.observe(str(requestBody["model"]), token, response.StatusCode, errorBody, nil)
+			}
 			if response.StatusCode == 400 && attempt < 3 && requestBody != nil {
 				next, rules, changed := repairRequest(requestBody, errorBody)
 				if changed {
-					log.Printf("Codex request compatibility (model %s): %v", str(requestBody["model"]), rules)
-					a.models.observe(str(requestBody["model"]), token, response.StatusCode, errorBody, rules)
+					log.Printf("%s request compatibility (model %s): %v", name, str(requestBody["model"]), rules)
+					if !copilotApp {
+						a.models.observe(str(requestBody["model"]), token, response.StatusCode, errorBody, rules)
+					}
 					requestBody = next
 					body = jsonBytes(next)
 					continue
@@ -95,7 +162,7 @@ func (a *App) codex(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write(data)
 			return
 		}
-		normalize := response.StatusCode == 200 && strings.Contains(path, "/responses") && strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "text/event-stream") &&
+		normalize := response.StatusCode == 200 && (copilotApp || strings.Contains(path, "/responses")) && strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "text/event-stream") &&
 			(response.Header.Get("Content-Encoding") == "" || response.Header.Get("Content-Encoding") == "identity")
 		for key, values := range response.Header {
 			if strings.EqualFold(key, "Connection") || strings.EqualFold(key, "Transfer-Encoding") || (normalize && strings.EqualFold(key, "Content-Length")) {
@@ -112,10 +179,10 @@ func (a *App) codex(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				if !failureLogged {
-					log.Printf("Codex upstream failure (model %s, code %s): %s", str(requestBody["model"]), str(detail["code"]), str(detail["message"]))
+					log.Printf("%s upstream failure (model %s, code %s): %s", name, str(requestBody["model"]), str(detail["code"]), str(detail["message"]))
 					failureLogged = true
 				}
-				if requestBody == nil {
+				if requestBody == nil || copilotApp {
 					return
 				}
 				_, rules, _ := repairRequest(requestBody, event)
@@ -126,7 +193,7 @@ func (a *App) codex(w http.ResponseWriter, r *http.Request) {
 		}
 		response.Body.Close()
 		if err != nil {
-			log.Printf("Codex upstream stream: %v", err)
+			log.Printf("%s upstream stream: %v", name, err)
 		}
 		return
 	}
@@ -140,6 +207,12 @@ func claudeError(w http.ResponseWriter, status int, message string) {
 }
 func (a *App) claude(w http.ResponseWriter, r *http.Request) {
 	state := a.snapshot()
+	/*
+		if state.RemoteURL != "" {
+			a.forwardRemote(w, r, state, "claude", state.Claude)
+			return
+		}
+	*/
 	if state.Token == "" || !state.Claude {
 		claudeError(w, 401, "Claude bridge not active")
 		return

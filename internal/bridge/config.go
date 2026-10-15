@@ -77,7 +77,7 @@ func (a *App) migrateCodexEnvironment() error {
 }
 func (a *App) injectCodex() error {
 	state := a.snapshot()
-	if !state.Codex || state.Token == "" {
+	if !state.Codex || !state.active() {
 		return nil
 	}
 	if err := a.migrateCodexAuth(); err != nil {
@@ -86,6 +86,13 @@ func (a *App) injectCodex() error {
 	if err := a.migrateCodexEnvironment(); err != nil {
 		return err
 	}
+	/*
+		if state.RemoteURL != "" {
+			if err := a.refreshRemoteCatalog(a.ctx, state); err != nil {
+				return err
+			}
+		} else {
+	*/
 	a.models.setAccount(state.Token)
 	if len(a.models.visible()) == 0 {
 		if err := a.models.ensureSession(a.ctx); err != nil {
@@ -93,15 +100,19 @@ func (a *App) injectCodex() error {
 		}
 		a.models.wg.Wait()
 	}
+	// }
 	if a.ctx.Err() != nil {
 		return a.ctx.Err()
 	}
-	if a.snapshot().Token != state.Token || !a.snapshot().Codex {
+	if current := a.snapshot(); current.Token != state.Token || !current.Codex {
+		// || current.RemoteURL != state.RemoteURL || current.RemoteToken != state.RemoteToken
 		return errors.New("account changed during Codex preparation")
 	}
+	// if state.RemoteURL == "" {
 	a.models.mu.Lock()
 	a.models.persistLocked()
 	a.models.mu.Unlock()
+	// }
 	if err := os.MkdirAll(a.options.CodexHome, 0700); err != nil {
 		return err
 	}

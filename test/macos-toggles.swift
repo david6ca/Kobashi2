@@ -8,19 +8,22 @@ func check(_ condition: @autoclosure () -> Bool, _ message: String) {
 
 class ToggleCheckDelegate: AppDelegate {
     var requests: [String] = []
-    var enabled = ["codexEnabled": true, "claudeEnabled": true]
+    var enabled = ["codexEnabled": true, "claudeEnabled": true, "copilotEnabled": true]
     var step = 0
     let clicks = [
-        ("codex", NSPoint(x: 295, y: 40)),
-        ("codex", NSPoint(x: 168, y: 40)),
-        ("claude", NSPoint(x: 295, y: 40)),
-        ("claude", NSPoint(x: 168, y: 40))
+        ("codex", NSPoint(x: 295, y: 25)),
+        ("codex", NSPoint(x: 168, y: 25)),
+        ("claude", NSPoint(x: 295, y: 25)),
+        ("claude", NSPoint(x: 168, y: 25)),
+        ("copilot", NSPoint(x: 295, y: 25)),
+        ("copilot", NSPoint(x: 168, y: 25))
     ]
 
     override func applicationDidFinishLaunching(_ notification: Notification) {
         check(createWindow(), "The isolated toggle window loads")
         currentView = "connected"
-        status = ["connected": true, "codexEnabled": true, "claudeEnabled": true]
+        status = ["connected": true, "codexEnabled": true, "claudeEnabled": true, "copilotEnabled": true,
+                  "copilotURL": "http://127.0.0.1:18925/v1"]
         render()
         NSApp.activate(ignoringOtherApps: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.clickNext() }
@@ -29,7 +32,7 @@ class ToggleCheckDelegate: AppDelegate {
     override func request(_ path: String, body: [String: Any]? = nil,
                           completion: @escaping ([String: Any]?, String?) -> Void) {
         requests.append(path)
-        let field = path == "/api/toggle-codex" ? "codexEnabled" : "claudeEnabled"
+        let field = String(path.dropFirst("/api/toggle-".count)) + "Enabled"
         enabled[field] = !(enabled[field] ?? false)
         DispatchQueue.main.async { completion(self.enabled, nil) }
     }
@@ -38,7 +41,7 @@ class ToggleCheckDelegate: AppDelegate {
 
     func clickNext() {
         guard step < clicks.count else {
-            print("PASS: Both bridge cards toggle off and back on through mouse events")
+            print("PASS: All bridge cards toggle off and back on through mouse events")
             exit(0)
         }
         let (key, point) = clicks[step]

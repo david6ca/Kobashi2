@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	// "net"
 	"net/url"
 	"os"
 	"os/exec"
@@ -25,6 +26,25 @@ var regDelete = advapi.NewProc("RegDeleteValueW")
 var regClose = advapi.NewProc("RegCloseKey")
 var kernel = syscall.NewLazyDLL("kernel32.dll")
 var ntQueryProcess = syscall.NewLazyDLL("ntdll.dll").NewProc("NtQueryInformationProcess")
+
+/*
+func configureMulticast(conn *net.UDPConn, ip net.IP) error {
+	raw, err := conn.SyscallConn()
+	if err != nil {
+		return err
+	}
+	var address [4]byte
+	copy(address[:], ip.To4())
+	var options error
+	err = raw.Control(func(fd uintptr) {
+		handle := syscall.Handle(fd)
+		options = errors.Join(syscall.SetsockoptInet4Addr(handle, syscall.IPPROTO_IP, syscall.IP_MULTICAST_IF, address),
+			syscall.SetsockoptInt(handle, syscall.IPPROTO_IP, syscall.IP_MULTICAST_LOOP, 1),
+			syscall.SetsockoptInt(handle, syscall.IPPROTO_IP, syscall.IP_MULTICAST_TTL, 255))
+	})
+	return errors.Join(err, options)
+}
+*/
 
 func wide(s string) *uint16 { p, _ := syscall.UTF16PtrFromString(s); return p }
 func registryHandle(path string, write bool) (uintptr, error) {

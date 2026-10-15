@@ -74,7 +74,7 @@ func main() {
 		os.Exit(1)
 	}
 	options := bridge.Options{Home: *home, Executable: executable, AppPath: os.Getenv("KOBASHI_APP_PATH"), Version: Version, ControlToken: os.Getenv("KOBASHI_CONTROL_TOKEN"),
-		Ports: bridge.Ports{Codex: 18921 + *offset, Control: 18922 + *offset, Claude: 18923 + *offset}, Desktop: !*headless || os.Getenv("KOBASHI_APP_PATH") != ""}
+		Ports: bridge.Ports{Codex: 18921 + *offset, Control: 18922 + *offset, Claude: 18923 + *offset, Copilot: 18925 + *offset}, Desktop: !*headless || os.Getenv("KOBASHI_APP_PATH") != ""}
 	if *noStartup {
 		options.Startup = func(bool) error { return nil }
 	}

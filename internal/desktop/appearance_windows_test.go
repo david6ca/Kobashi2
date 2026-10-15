@@ -50,8 +50,8 @@ func captureClient(t *testing.T, hwnd uintptr, width, height int) *image.NRGBA {
 }
 
 func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
+	// Retire this GUI thread when the test exits so queued Win32 messages cannot affect later tests.
 	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	awareness := user.NewProc("SetProcessDpiAwarenessContext")
 	if awareness.Find() == nil {
 		awareness.Call(^uintptr(3))
@@ -63,6 +63,7 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 	}
 	w := &Window{dpi: 96, view: "idle", settings: map[string]any{"startAtLogin": true, "closeToTray": true},
 		status: map[string]any{"version": "2.1.6", "username": "example", "codexEnabled": false, "claudeEnabled": true,
+			"copilotEnabled": true, "copilotURL": "http://127.0.0.1:18925/v1",
 			"usage": map[string]any{"creditsUsed": float64(12), "entitlement": float64(100)}}}
 	if err := w.loadArtwork(); err != nil {
 		t.Fatal(err)
@@ -89,6 +90,14 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 	}()
 	if err := w.build(); err != nil {
 		t.Fatal(err)
+	}
+	for _, c := range w.controls {
+		if c.view == "client" || c.view == "server" || c.view == "network" {
+			t.Fatal("disabled network control was created", c.id, c.title)
+		}
+		if strings.ReplaceAll(c.title, "&", "") == "Copy Copilot setup" {
+			t.Fatal("Copilot setup copy action is still present")
+		}
 	}
 	w.fixedSize(0, 0)
 	if w.control(2) != 0 {
@@ -184,6 +193,46 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 			}
 		}
 	}
+	assertConnectedLayout := func(offset int) {
+		t.Helper()
+		var client rect
+		proc("GetClientRect", w.Handle, uintptr(unsafe.Pointer(&client)))
+		if client.Right != int32(400*w.dpi/96) || client.Bottom != int32((400-offset)*w.dpi/96) {
+			t.Fatalf("connected/%d DPI has unused space or clipped content: %v", w.dpi, client)
+		}
+		for id, y := range map[int]int{7: 119, 8: 160, idDisconnect: 119, idClaude: 216, idCodex: 260,
+			idCopilot: 304, idProject: 368} {
+			var bounds rect
+			proc("GetWindowRect", w.control(id), uintptr(unsafe.Pointer(&bounds)))
+			proc("MapWindowPoints", 0, w.Handle, uintptr(unsafe.Pointer(&bounds)), 2)
+			if bounds.Top != int32((y-offset)*w.dpi/96) {
+				t.Fatalf("connected/%d DPI misaligns control %d: %v", w.dpi, id, bounds)
+			}
+		}
+		noticeVisible := proc("GetWindowLongW", w.control(12), ^uintptr(15))&0x10000000 != 0
+		if noticeVisible != (offset == 0) {
+			t.Fatal("the connected homepage reserves space for an empty notice or hides an active notice")
+		}
+		screenshot := captureClient(t, w.Handle, int(client.Right), int(client.Bottom))
+		pixel := func(x, y int) color.NRGBA {
+			return screenshot.NRGBAAt(x*w.dpi/96, (y-offset)*w.dpi/96)
+		}
+		rgb := func(value uint32) color.NRGBA {
+			return color.NRGBA{R: byte(value >> 16), G: byte(value >> 8), B: byte(value), A: 255}
+		}
+		for y := 194; y < 210; y++ {
+			if pixel(200, y) != rgb(w.palette.background) {
+				t.Fatalf("connected/%d DPI does not preserve the 16-point gap between panels", w.dpi)
+			}
+		}
+		for _, y := range []int{238, 260, 282, 304, 326} {
+			if pixel(32, y) != rgb(w.palette.border) || pixel(40, y) != rgb(w.palette.panel) ||
+				pixel(200, y) != rgb(w.palette.panel) {
+				t.Fatalf("connected/%d DPI does not render one continuous Bridge panel at row %d", w.dpi, y)
+			}
+		}
+		assertVisibleControlsFit()
+	}
 	for _, theme := range []string{"dark", "light"} {
 		w.status["appearance"] = theme
 		for _, view := range []string{"idle", "token", "device", "connected", "settings"} {
@@ -199,6 +248,26 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 			}
 			if view == "connected" {
 				assertStatus(idDisconnect, "Connected", w.palette.connected)
+				assertConnectedLayout(32)
+				for _, enabled := range []bool{true, false} {
+					for _, key := range []string{"claudeEnabled", "codexEnabled", "copilotEnabled"} {
+						w.status[key] = enabled
+					}
+					w.render()
+					reference := captureClient(t, w.control(idClaude), 320, 44)
+					for _, id := range []int{idCodex, idCopilot} {
+						status := captureClient(t, w.control(id), 320, 44)
+						for y := 24; y < 44; y++ {
+							for x := 58; x < 254; x++ {
+								if status.NRGBAAt(x, y) != reference.NRGBAAt(x, y) {
+									t.Fatal("Bridge status text or typography differs", id, enabled, x, y)
+								}
+							}
+						}
+					}
+				}
+				w.status["claudeEnabled"], w.status["codexEnabled"], w.status["copilotEnabled"] = true, false, true
+				w.render()
 			}
 			if view == "idle" || view == "connected" {
 				w.busy = true
@@ -211,7 +280,7 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 				w.busy = false
 				w.render()
 			}
-			screenshot := captureClient(t, w.Handle, windowWidth, windowHeight)
+			screenshot := captureClient(t, w.Handle, windowWidth, w.contentHeight())
 			want := themePalette(theme == "dark", w.highContrast)
 			background := screenshot.NRGBAAt(5, 5)
 			if background != (color.NRGBA{R: byte(want.background >> 16), G: byte(want.background >> 8), B: byte(want.background), A: 255}) {
@@ -236,7 +305,8 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 	}
 	for id, want := range map[int]rect{
 		idSettings: {296, 24, 328, 56}, idTheme: {336, 24, 368, 56},
-		idClaude: {32, 206, 368, 278}, idCodex: {32, 290, 368, 362},
+		idClaude: {40, 216, 360, 260}, idCodex: {40, 260, 360, 304},
+		idCopilot:    {40, 304, 360, 348},
 		idDisconnect: {255, 119, 349, 147},
 		idStartup:    {32, 114, 368, 194}, idTray: {32, 206, 368, 286},
 		idDone: {32, 328, 368, 360}, idQuit: {32, 368, 144, 392},
@@ -245,10 +315,10 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 		proc("GetWindowRect", w.control(id), uintptr(unsafe.Pointer(&got)))
 		proc("MapWindowPoints", 0, w.Handle, uintptr(unsafe.Pointer(&got)), 2)
 		if got != want {
-			t.Fatal("control does not match old UI geometry", id, got, want)
+			t.Fatal("control does not match expected UI geometry", id, got, want)
 		}
 	}
-	for _, id := range []int{idClaude, idCodex, idStartup, idTray} {
+	for _, id := range []int{idClaude, idCodex, idCopilot, idStartup, idTray} {
 		if proc("GetWindowLongW", w.control(id), ^uintptr(15))&0xf != 3 {
 			t.Fatal("custom appearance discarded native checkbox semantics", id)
 		}
@@ -328,6 +398,24 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 			w.view = "connected"
 			w.render()
 			assertStatus(idDisconnect, "Connected", w.palette.connected)
+			assertConnectedLayout(32)
+			for _, source := range []string{"notice", "error"} {
+				if source == "notice" {
+					w.notice = "Settings saved."
+				} else {
+					w.status["error"] = "GitHub needs authorization."
+				}
+				w.render()
+				assertConnectedLayout(0)
+				w.notice = ""
+				delete(w.status, "error")
+				w.render()
+				assertConnectedLayout(32)
+			}
+			w.status["usage"] = nil
+			w.render()
+			assertConnectedLayout(32)
+			w.status["usage"] = map[string]any{"creditsUsed": float64(12), "entitlement": float64(100)}
 			w.view = "settings"
 			w.render()
 			dc = proc("GetDC", w.Handle)

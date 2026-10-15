@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	// "net"
 	"net/url"
 	"os"
 	"os/exec"
@@ -12,8 +13,27 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	// "syscall"
 	"time"
 )
+
+/*
+func configureMulticast(conn *net.UDPConn, ip net.IP) error {
+	raw, err := conn.SyscallConn()
+	if err != nil {
+		return err
+	}
+	var address [4]byte
+	copy(address[:], ip.To4())
+	var options error
+	err = raw.Control(func(fd uintptr) {
+		options = errors.Join(syscall.SetsockoptInet4Addr(int(fd), syscall.IPPROTO_IP, syscall.IP_MULTICAST_IF, address),
+			syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IP, syscall.IP_MULTICAST_LOOP, 1),
+			syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IP, syscall.IP_MULTICAST_TTL, 255))
+	})
+	return errors.Join(err, options)
+}
+*/
 
 func replaceFile(source, target string) error { return os.Rename(source, target) }
 func hideCommand(cmd *exec.Cmd)               {}

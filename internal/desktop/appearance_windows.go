@@ -79,6 +79,17 @@ func credits(value float64) string {
 	return strings.Join(parts, ".")
 }
 
+func (w *Window) connectedOffset() int {
+	if w.view == "connected" && w.notice == "" && text(w.status["error"]) == "" {
+		return 32
+	}
+	return 0
+}
+
+func (w *Window) contentHeight() int {
+	return windowHeight - w.connectedOffset()
+}
+
 func (w *Window) layout() {
 	var hint, link *control
 	for i := range w.controls {
@@ -113,6 +124,10 @@ func (w *Window) layout() {
 	}
 	for i := range w.controls {
 		c := &w.controls[i]
+		c.y = c.baseY
+		if c.view == "connected" || c.id == idProject {
+			c.y -= w.connectedOffset()
+		}
 		if c.id == idConnect {
 			c.y = 160
 			if w.view == "token" {
@@ -124,7 +139,9 @@ func (w *Window) layout() {
 			case "connected":
 				c.y, c.h = 64, 30
 			case "settings":
-				c.y, c.h = 290, 30
+				c.y, c.h = 70, 32
+			// case "client", "server":
+			// 	c.y, c.h = 280, 42
 			case "token":
 				c.y, c.h = 267, 62
 			case "device":
@@ -308,21 +325,23 @@ func (w *Window) paintWindow(dc uintptr) {
 		dc = proc("BeginPaint", w.Handle, uintptr(unsafe.Pointer(&ps)))
 		defer proc("EndPaint", w.Handle, uintptr(unsafe.Pointer(&ps)))
 	}
-	w.buffered(dc, windowWidth, windowHeight, func(p painter) {
+	w.buffered(dc, windowWidth, w.contentHeight(), func(p painter) {
 		c := w.palette
-		p.fill(0, 0, windowWidth, windowHeight, c.background)
+		p.fill(0, 0, windowWidth, w.contentHeight(), c.background)
 		switch w.view {
 		case "connected":
-			p.round(32, 104, 336, 90, 12, c.panel, c.border)
+			offset := w.connectedOffset()
+			p.round(32, 104-offset, 336, 90, 12, c.panel, c.border)
+			p.round(32, 210-offset, 336, 144, 12, c.panel, c.border)
 			if used, total, ok := w.usage(); ok {
-				p.round(50, 178, 299, 5, 3, c.toggle, c.toggle)
+				p.round(50, 178-offset, 299, 5, 3, c.toggle, c.toggle)
 				width := int(math.Min(1, used/total) * 299)
 				if used > 0 {
 					width = max(3, width)
 					saved, _, _ := gdi.NewProc("SaveDC").Call(p.dc)
-					region, _, _ := gdi.NewProc("CreateRoundRectRgn").Call(p.s(50), p.s(178), p.s(50+width), p.s(183), p.s(6), p.s(6))
+					region, _, _ := gdi.NewProc("CreateRoundRectRgn").Call(p.s(50), p.s(178-offset), p.s(50+width), p.s(183-offset), p.s(6), p.s(6))
 					gdi.NewProc("ExtSelectClipRgn").Call(p.dc, region, 1)
-					p.gradient(50, 178, width, 5)
+					p.gradient(50, 178-offset, width, 5)
 					gdi.NewProc("RestoreDC").Call(p.dc, saved)
 					gdi.NewProc("DeleteObject").Call(region)
 				}
@@ -363,7 +382,7 @@ func (w *Window) paintControl(c control, dc uintptr) {
 				bg = colors.panel
 			}
 		}
-		if c.id == 10 || c.id == 11 {
+		if c.id == 10 || c.id == 11 || c.id == idClaude || c.id == idCodex || c.id == idCopilot {
 			bg = colors.panel
 		}
 		p.fill(0, 0, c.w, c.h, bg)
@@ -379,7 +398,7 @@ func (w *Window) paintControl(c control, dc uintptr) {
 			p.line(8, 14, 20, 5, 3, colors.accent)
 			p.line(8, 14, 20, 23, 3, colors.secondary)
 			p.gradientText(title, 34, 1, 90, 27, w.heading)
-		case 3, 4, 10, 11, 12:
+		case 3, 4, 10, 11, 12, 21, 22, 24, 25:
 			rgb := colors.muted
 			if c.id == 12 && w.notice != "" && w.notice != "Working..." && w.notice != "Settings saved." && w.notice != "Code copied." && w.view != "quitting" {
 				rgb = colors.danger
@@ -408,36 +427,39 @@ func (w *Window) paintControl(c control, dc uintptr) {
 			gdi.NewProc("GetTextExtentPoint32W").Call(p.dc, uintptr(unsafe.Pointer(wide(title))), uintptr(len(syscall.StringToUTF16(title))-1), uintptr(unsafe.Pointer(&extent)))
 			width := min(c.w, int(extent.X)*96/w.dpi+38)
 			p.round(0, 0, width, c.h, 13, colors.badge, colors.border)
+			// if w.status["authMethod"] != "remote" {
 			p.artwork("github", 5, 5, 16, colors.badge, colors.accent, true)
+			// }
 			p.text(title, 27, 0, width-35, c.h, w.small, colors.accent, 0x8824)
 		case 8:
 			used, total, _ := w.usage()
 			p.text("AI credits this cycle", 0, 0, 170, c.h, w.tiny, colors.muted, 0x824)
 			p.text(credits(used)+" / "+credits(total), 170, 0, c.w-170, c.h, w.tiny, fg, 0x826)
-		case 9:
+		case 9, 20, 23:
 			p.text(title, 0, 0, c.w, c.h, w.heading, fg, 0x824)
-		case idClaude, idCodex:
-			p.round(0, 0, c.w, c.h, 12, colors.panel, colors.border)
-			p.round(18, 20, 32, 32, 8, colors.tile, colors.border)
+		case idClaude, idCodex, idCopilot:
+			p.round(10, 6, 32, 32, 8, colors.tile, colors.border)
 			if c.id == idClaude {
-				p.artwork("claude", 24, 26, 20, colors.tile, 0xd97757, true)
+				p.artwork("claude", 16, 12, 20, colors.tile, 0xd97757, true)
+			} else if c.id == idCopilot {
+				p.artwork("github", 16, 12, 20, colors.tile, colors.accent, true)
 			} else {
-				p.artwork("codex", 22, 24, 24, colors.tile, 0, false)
+				p.artwork("codex", 14, 10, 24, colors.tile, 0, false)
 			}
-			p.text(title, 62, 16, 180, 20, w.small, colors.muted, 0x24)
+			p.text(title, 54, 2, 180, 20, w.small, colors.muted, 0x24)
 			on := proc("SendMessageW", c.handle, 0xf0, 0, 0) == 1
 			word, dot := "Paused", colors.muted
 			if on {
 				word, dot = "Active", colors.accent
 			}
-			p.round(66, 44, 8, 8, 4, dot, dot)
-			p.text(word, 82, 36, 120, 24, w.font, fg, 0x824)
+			p.round(58, 29, 8, 8, 4, dot, dot)
+			p.text(word, 74, 20, 180, 24, w.font, fg, 0x824)
 			track, knob := colors.toggle, 2
 			if on {
 				track, knob = colors.on, 22
 			}
-			p.round(273, 24, 44, 24, 12, track, colors.border)
-			p.round(273+knob, 27, 18, 18, 9, colors.knob, colors.knob)
+			p.round(c.w-55, 10, 44, 24, 12, track, colors.border)
+			p.round(c.w-55+knob, 13, 18, 18, 9, colors.knob, colors.knob)
 		case idStartup, idTray:
 			p.round(0, 0, c.w, c.h, 12, colors.panel, colors.border)
 			p.text(title, 16, 12, 256, 24, w.bold, fg, 0x24)

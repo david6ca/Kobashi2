@@ -29,8 +29,9 @@ Editing files, building, and verifying logic against a copy are all fine — non
 
 - `18921` — Codex bridge (`~/.codex/config.toml` → `model_providers.kobashi`)
 - `18923` — Claude gateway (`~/.claude/settings.json`, Claude Desktop managed-config)
+- `18925` — Copilot app BYOK endpoint (OpenAI-compatible; provider API key `PROXY_MANAGED`)
 
-Both are written by kobashi at startup and restored on exit. A port showing as busy is normal operation, not a stale process to clean up.
+Codex and Claude configurations are written by kobashi at startup and restored on exit. The Copilot app provider is configured by the user; Kobashi never changes its login, credential store, or environment. A port showing as busy is normal operation, not a stale process to clean up.
 
 ## Config injection
 

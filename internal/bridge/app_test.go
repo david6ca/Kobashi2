@@ -68,10 +68,81 @@ func controlCall(a *App, path string, body object) *httptest.ResponseRecorder {
 	a.control(w, r)
 	return w
 }
+func TestServerClientConfigurationAndRoutesAreDisabled(t *testing.T) {
+	a := testApp(t, func(*http.Request) (*http.Response, error) {
+		t.Error("disabled network configuration made an upstream request")
+		return nil, errors.New("unexpected upstream request")
+	})
+	files := map[string]object{
+		"server.json": {"enabled": true, "listen": "invalid", "token": "saved-server-token"},
+		"session.json": {
+			"remoteURL": "http://127.0.0.1:18924", "remoteToken": "saved-client-token", "authMethod": "remote",
+			"codexEnabled": true, "claudeEnabled": true, "copilotEnabled": true,
+		},
+	}
+	original := map[string][]byte{}
+	for name, value := range files {
+		if err := writeJSON(a.path(name), value); err != nil {
+			t.Fatal(err)
+		}
+		data, err := os.ReadFile(a.path(name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		original[name] = data
+	}
+	reloaded, err := New(a.options)
+	if err != nil {
+		t.Fatal("disabled Server settings were loaded", err)
+	}
+	defer reloaded.Stop()
+	reloaded.initialize()
+	if reloaded.snapshot().active() {
+		t.Fatal("saved Client connection was restored")
+	}
+	status := controlCall(reloaded, "/api/status", nil)
+	var value object
+	if err := json.Unmarshal(status.Body.Bytes(), &value); err != nil || status.Code != 200 || value["connected"] != false {
+		t.Fatal("unexpected local connection status", status.Code, status.Body.String(), err)
+	}
+	for _, key := range []string{"remoteURL", "server"} {
+		if _, found := value[key]; found {
+			t.Fatal("disabled network settings remain in status", key)
+		}
+	}
+	for _, path := range []string{"/api/server", "/api/discover", "/api/remote-connect"} {
+		for _, body := range []object{nil, {"enabled": true, "url": "http://127.0.0.1:18924", "token": "saved-client-token"}} {
+			if result := controlCall(reloaded, path, body); result.Code != 404 {
+				t.Fatal("disabled network route is still available", path, result.Code, result.Body.String())
+			}
+		}
+	}
+	for _, handler := range []http.HandlerFunc{reloaded.codex, reloaded.claude, reloaded.copilotApp} {
+		result := httptest.NewRecorder()
+		handler(result, copilotRequest("GET", "/v1/models", ""))
+		if result.Code != 401 {
+			t.Fatal("saved Client connection allowed inference", result.Code, result.Body.String())
+		}
+	}
+	for name, expected := range original {
+		data, err := os.ReadFile(reloaded.path(name))
+		if err != nil || !bytes.Equal(data, expected) {
+			t.Fatal("disabled network configuration was changed", name, err)
+		}
+	}
+	for _, path := range []string{filepath.Join(a.options.CodexHome, "config.toml"), filepath.Join(a.options.Home, ".claude", "settings.json")} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("saved Client connection injected a local configuration", path, err)
+		}
+	}
+}
 func TestNativeSettingsDefaultsPersistenceAndRollback(t *testing.T) {
 	a := testApp(t, func(*http.Request) (*http.Response, error) { return nil, errors.New("network must not be used") })
-	if a.Settings() != (Settings{true, true}) {
+	if a.Settings() != (Settings{false, true}) {
 		t.Fatal(a.Settings())
+	}
+	if r := controlCall(a, "/api/settings", object{"startAtLogin": true}); r.Code != 200 {
+		t.Fatal(r.Body.String())
 	}
 	if r := controlCall(a, "/api/settings", object{"startAtLogin": false}); r.Code != 200 {
 		t.Fatal(r.Body.String())
@@ -110,6 +181,76 @@ func TestNativeSettingsDefaultsPersistenceAndRollback(t *testing.T) {
 	}
 	if a.Settings().StartAtLogin {
 		t.Fatal("failed save changed live settings")
+	}
+}
+func TestInitializePreservesStartupWithoutRegistering(t *testing.T) {
+	for _, tc := range []struct {
+		name, data   string
+		startAtLogin bool
+		invalid      bool
+	}{
+		{name: "new"},
+		{name: "enabled", data: `{"startAtLogin":true,"closeToTray":true}`, startAtLogin: true},
+		{name: "disabled", data: `{"startAtLogin":false,"closeToTray":true}`},
+		{name: "invalid", data: `{`, invalid: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			path := filepath.Join(home, ".kobashi", "settings.json")
+			if tc.data != "" {
+				if err := writeAtomic(path, []byte(tc.data)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			calls := []bool{}
+			options := Options{Home: home, Desktop: true, Startup: func(enabled bool) error {
+				calls = append(calls, enabled)
+				return nil
+			}}
+			a, err := New(options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := a.Stop(); err != nil {
+					t.Error(err)
+				}
+			})
+			a.initialize()
+			a.initialize()
+			if len(calls) != 0 {
+				t.Fatal("initialization changed system startup", calls)
+			}
+			if a.Settings() != (Settings{tc.startAtLogin, true}) || (a.settingsError != "") != tc.invalid {
+				t.Fatal("initialization changed the saved settings", a.Settings(), a.settingsError)
+			}
+			if data, err := readOptional(path); err != nil || string(data) != tc.data {
+				t.Fatal("initialization rewrote settings", string(data), err)
+			}
+			if r := controlCall(a, "/api/settings", object{"closeToTray": false}); r.Code != 200 {
+				t.Fatal(r.Body.String())
+			}
+			if len(calls) != 0 {
+				t.Fatal("tray settings changed system startup", calls)
+			}
+			for range 2 {
+				if r := controlCall(a, "/api/settings", object{"startAtLogin": !tc.startAtLogin}); r.Code != 200 {
+					t.Fatal(r.Body.String())
+				}
+			}
+			if len(calls) != 1 || calls[0] == tc.startAtLogin {
+				t.Fatal("explicit startup change was not applied exactly once", calls)
+			}
+			reloaded, err := New(options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reloaded.Stop()
+			reloaded.initialize()
+			if reloaded.Settings() != a.Settings() || len(calls) != 1 {
+				t.Fatal("relaunch changed settings or registered startup again", calls)
+			}
+		})
 	}
 }
 func TestControlRejectsUnauthenticatedAndForeignOrigin(t *testing.T) {

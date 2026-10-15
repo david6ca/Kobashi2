@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-type Ports struct{ Codex, Control, Claude int }
+type Ports struct{ Codex, Control, Claude, Copilot int }
 type Options struct {
 	Home, CodexHome, Executable, AppPath, Version, ControlToken string
 	Ports                                                       Ports
@@ -40,8 +40,17 @@ type session struct {
 	Username string `json:"username"`
 	Codex    bool   `json:"codexEnabled"`
 	Claude   bool   `json:"claudeEnabled"`
+	Copilot  bool   `json:"copilotEnabled"`
 	Method   string `json:"authMethod"`
+	// RemoteURL   string `json:"remoteURL,omitempty"`
+	// RemoteToken string `json:"remoteToken,omitempty"`
 }
+
+func (s session) active() bool {
+	return s.Token != ""
+	// || (s.RemoteURL != "" && s.RemoteToken != "")
+}
+
 type App struct {
 	options                       Options
 	mu                            sync.RWMutex
@@ -68,6 +77,10 @@ type App struct {
 	stopError                     error
 	watchOnce                     sync.Once
 	closed                        chan struct{}
+	// shared          sharedConfig
+	// sharedServer    *http.Server
+	// sharedDiscovery *lanService
+	// remoteClient    *http.Client
 }
 
 func New(options Options) (*App, error) {
@@ -85,7 +98,10 @@ func New(options Options) (*App, error) {
 		}
 	}
 	if options.Ports == (Ports{}) {
-		options.Ports = Ports{18921, 18922, 18923}
+		options.Ports = Ports{18921, 18922, 18923, 18925}
+	}
+	if options.Ports.Copilot == 0 {
+		options.Ports.Copilot = options.Ports.Codex + 4
 	}
 	if options.ControlToken == "" {
 		options.ControlToken = rand.Text()
@@ -94,8 +110,28 @@ func New(options Options) (*App, error) {
 		options.Client = newHTTPClient()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	a := &App{options: options, ctx: ctx, cancel: cancel, client: options.Client, settings: Settings{true, true}, appearance: "system", closed: make(chan struct{})}
+	a := &App{options: options, ctx: ctx, cancel: cancel, client: options.Client, settings: Settings{CloseToTray: true}, appearance: "system", closed: make(chan struct{})}
 	a.models = newModelRegistry(a)
+	/*
+		a.remoteClient = &http.Client{Transport: &http.Transport{
+			Proxy: nil, DialContext: (&net.Dialer{Timeout: 8 * time.Second, KeepAlive: 15 * time.Second}).DialContext,
+			IdleConnTimeout: 90 * time.Second,
+		}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		a.shared.Listen = fmt.Sprintf("0.0.0.0:%d", options.Ports.Codex+3)
+		if data, err := readOptional(a.path("server.json")); err != nil {
+			cancel()
+			return nil, err
+		} else if data != nil {
+			if err = json.Unmarshal(data, &a.shared); err != nil {
+				cancel()
+				return nil, fmt.Errorf("invalid Server configuration: %w", err)
+			}
+			if err = validateShared(a.shared); err != nil {
+				cancel()
+				return nil, err
+			}
+		}
+	*/
 	data, err := readOptional(a.path("settings.json"))
 	if err == nil && data != nil {
 		var patch object
@@ -119,8 +155,11 @@ func New(options Options) (*App, error) {
 	}
 	return a, nil
 }
-func (a *App) ControlToken() string    { return a.options.ControlToken }
-func (a *App) ControlURL() string      { return fmt.Sprintf("http://127.0.0.1:%d", a.options.Ports.Control) }
+func (a *App) ControlToken() string { return a.options.ControlToken }
+func (a *App) ControlURL() string   { return fmt.Sprintf("http://127.0.0.1:%d", a.options.Ports.Control) }
+func (a *App) CopilotURL() string {
+	return fmt.Sprintf("http://127.0.0.1:%d/v1", a.options.Ports.Copilot)
+}
 func (a *App) Closed() <-chan struct{} { return a.closed }
 func (a *App) path(name string) string { return filepath.Join(a.options.Home, ".kobashi", name) }
 func (a *App) report(err error) {
@@ -133,8 +172,8 @@ func (a *App) report(err error) {
 	a.mu.Unlock()
 }
 func (a *App) Start() error {
-	handlers := []http.Handler{http.HandlerFunc(a.codex), http.HandlerFunc(a.control), http.HandlerFunc(a.claude)}
-	ports := []int{a.options.Ports.Codex, a.options.Ports.Control, a.options.Ports.Claude}
+	handlers := []http.Handler{http.HandlerFunc(a.codex), http.HandlerFunc(a.control), http.HandlerFunc(a.claude), http.HandlerFunc(a.copilotApp)}
+	ports := []int{a.options.Ports.Codex, a.options.Ports.Control, a.options.Ports.Claude, a.options.Ports.Copilot}
 	listeners := []net.Listener{}
 	for _, port := range ports {
 		listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
@@ -165,21 +204,15 @@ func (a *App) Start() error {
 func (a *App) initialize() {
 	a.actions.Lock()
 	defer a.actions.Unlock()
+	/*
+		defer func() {
+			if a.shared.Enabled && a.ctx.Err() == nil {
+				a.report(a.startShared())
+			}
+		}()
+	*/
 	if a.ctx.Err() != nil {
 		return
-	}
-	var err error
-	if a.options.Desktop && a.settingsError == "" {
-		settings := a.Settings()
-		if err = a.configureStartup(settings.StartAtLogin); err == nil {
-			err = writeJSON(a.path("settings.json"), settings)
-		}
-		if err != nil {
-			a.report(err)
-			a.mu.Lock()
-			a.settingsError = err.Error()
-			a.mu.Unlock()
-		}
 	}
 	legacy := filepath.Join(a.options.Home, ".codex", "ccb-session.json")
 	data, err := readOptional(a.path("session.json"))
@@ -204,15 +237,24 @@ func (a *App) initialize() {
 		a.report(err)
 		return
 	}
-	if saved.Token == "" {
+	if !saved.active() {
 		return
 	}
+	/*
+		if saved.RemoteURL != "" {
+			if _, err = remoteURL(saved.RemoteURL); err != nil || saved.RemoteToken == "" || saved.Token != "" {
+				a.report(errors.New("invalid saved remote connection"))
+				return
+			}
+			saved.Method = "remote"
+		}
+	*/
 	var fields object
 	_ = json.Unmarshal(data, &fields)
 	if _, ok := fields["codexEnabled"]; !ok {
 		saved.Codex = fields["bridgeEnabled"] != false
 	}
-	if saved.Method != "token" {
+	if saved.Method != "token" { // && saved.Method != "remote"
 		saved.Method = "device"
 	}
 	a.mu.Lock()
@@ -267,7 +309,8 @@ func (a *App) saveSettings(patch object) error {
 	if err != nil {
 		return err
 	}
-	change := next.StartAtLogin != previous.StartAtLogin || retry
+	_, startupRequested := patch["startAtLogin"]
+	change := next.StartAtLogin != previous.StartAtLogin || (retry && startupRequested)
 	if change && a.options.Desktop {
 		if err = a.configureStartup(next.StartAtLogin); err != nil {
 			return err
@@ -291,8 +334,9 @@ func (a *App) Stop() error {
 	a.stopOnce.Do(func() {
 		a.cancel()
 		a.models.pause()
-		a.actions.Lock()
-		a.actions.Unlock()
+		// a.actions.Lock()
+		// a.stopShared()
+		// a.actions.Unlock()
 		for _, server := range a.servers {
 			if err := server.Close(); err != nil {
 				result = errors.Join(result, err)
@@ -331,6 +375,19 @@ func (a *App) disconnect() error {
 	if err != nil {
 		return err
 	}
+	/*
+		if a.shared.Enabled {
+			next := a.shared
+			next.Enabled = false
+			if err := writeJSON(a.path("server.json"), next); err != nil {
+				return err
+			}
+			a.mu.Lock()
+			a.shared = next
+			a.mu.Unlock()
+		}
+		a.stopShared()
+	*/
 	a.mu.Lock()
 	a.state = session{Method: state.Method}
 	a.bearer = ""
@@ -465,7 +522,7 @@ func (a *App) validateToken(ctx context.Context, token, method string) (object, 
 	}
 	a.models.pause()
 	a.mu.Lock()
-	a.state = session{token, str(who["login"]), true, true, method}
+	a.state = session{Token: token, Username: str(who["login"]), Codex: true, Claude: true, Method: method}
 	a.bearer = str(value["token"])
 	a.expiry = number(value["expires_at"])
 	a.rawModels = nil
@@ -514,11 +571,21 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 		case "/api/status":
 			a.mu.RLock()
 			s := a.state
-			status := object{"connected": s.Token != "", "username": s.Username, "authMethod": s.Method, "codexEnabled": s.Codex, "claudeEnabled": s.Claude,
+			status := object{"connected": s.active(), "username": s.Username, "authMethod": s.Method, "codexEnabled": s.Codex, "claudeEnabled": s.Claude,
+				"copilotEnabled": s.Copilot, "copilotURL": a.CopilotURL(),
 				"version": a.options.Version, "error": a.lastError, "lastEffort": a.lastEffort, "usage": a.usage, "appearance": a.appearance}
+			// status["remoteURL"] = s.RemoteURL
+			// status["server"] = object{"enabled": a.shared.Enabled, "running": a.sharedServer != nil, "listen": a.shared.Listen}
 			a.mu.RUnlock()
 			status["codexModels"] = a.models.status()
 			respond(w, 200, status)
+		/*
+			case "/api/server":
+				a.mu.RLock()
+				config := a.shared
+				a.mu.RUnlock()
+				respond(w, 200, config)
+		*/
 		default:
 			respond(w, 404, object{"error": "Not found"})
 		}
@@ -545,6 +612,22 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 	var result any = object{"ok": true}
 	var err error
 	switch r.URL.Path {
+	/*
+		case "/api/server":
+			var body object
+			body, err = readObject(r.Body, 16384)
+			if err == nil {
+				result, err = a.configureShared(body)
+			}
+		case "/api/discover":
+			result, err = discoverLAN(r.Context())
+		case "/api/remote-connect":
+			var body object
+			body, err = readObject(r.Body, 16384)
+			if err == nil {
+				err = a.connectRemote(r.Context(), str(body["url"]), str(body["token"]))
+			}
+	*/
 	case "/api/appearance":
 		var value object
 		value, err = readObject(r.Body, 4096)
@@ -600,9 +683,24 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 				result = object{"pending": true, "error": value["error"]}
 			}
 		}
+	case "/api/toggle-copilot":
+		state := a.snapshot()
+		if !state.active() {
+			err = errors.New("not connected")
+			break
+		}
+		a.mu.Lock()
+		a.state.Copilot = !state.Copilot
+		a.mu.Unlock()
+		if err = a.saveSession(); err != nil {
+			a.mu.Lock()
+			a.state.Copilot = state.Copilot
+			a.mu.Unlock()
+		}
+		result = object{"codexEnabled": state.Codex, "claudeEnabled": state.Claude, "copilotEnabled": a.snapshot().Copilot}
 	case "/api/toggle-codex", "/api/toggle-claude":
 		state := a.snapshot()
-		if state.Token == "" {
+		if !state.active() {
 			err = errors.New("not connected")
 			break
 		}
@@ -642,7 +740,7 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 		} else {
 			err = a.saveSession()
 		}
-		result = object{"codexEnabled": a.snapshot().Codex, "claudeEnabled": a.snapshot().Claude}
+		result = object{"codexEnabled": a.snapshot().Codex, "claudeEnabled": a.snapshot().Claude, "copilotEnabled": a.snapshot().Copilot}
 	case "/api/disconnect":
 		err = a.disconnect()
 	default:
