@@ -24,7 +24,7 @@ class SmokeDelegate: AppDelegate {
 
     override func refresh() {
         if timer != nil { return }
-        window.title = "Kobashi Lifecycle Test (no bridge)"
+        window.title = "Kobashi2 Lifecycle Test (no bridge)"
         window.contentView?.viewWithTag(999)?.removeFromSuperview()
         let status = NSTextField(wrappingLabelWithString: "")
         status.frame = NSRect(x: 24, y: 160, width: 352, height: 220)

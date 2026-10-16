@@ -48,7 +48,7 @@ func configureStartup(options Options, enabled bool) error {
 		return removeOptional(path)
 	}
 	if options.AppPath == "" {
-		return errors.New("start at login requires the installed Kobashi.app")
+		return errors.New("start at login requires the installed Kobashi2.app")
 	}
 	contents := `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

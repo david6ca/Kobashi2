@@ -2,14 +2,17 @@ package bridge
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -28,6 +31,7 @@ func TestCopilotTogglePersistsWithoutChangingClientLogin(t *testing.T) {
 		t.Error("Copilot setup must not make network requests")
 		return nil, errors.New("unexpected upstream call")
 	})
+	mockCopilotSetup(t, a)
 	a.options.ReadEnvironment = func(string) (*string, error) {
 		t.Fatal("Copilot setup read the user environment")
 		return nil, nil
@@ -62,7 +66,7 @@ func TestCopilotTogglePersistsWithoutChangingClientLogin(t *testing.T) {
 	}
 	reloaded.initialize()
 	if !reloaded.snapshot().Copilot {
-		t.Error("Copilot was not restored after startup")
+		t.Error("Copilot must preserve its enabled state across launches")
 	}
 	if err := reloaded.Stop(); err != nil {
 		t.Fatal(err)
@@ -95,8 +99,67 @@ func TestCopilotTogglePersistsWithoutChangingClientLogin(t *testing.T) {
 	}
 }
 
+func TestCopilotStartupPreservesEnablementWithoutChangingAppSessions(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprint(enabled), func(t *testing.T) {
+			a := testApp(t, func(*http.Request) (*http.Response, error) {
+				t.Fatal("startup must not contact Copilot")
+				return nil, errors.New("unexpected upstream request")
+			})
+			a.copilotSession = func() (copilotSelection, error) {
+				t.Fatal("startup must not read or change the selected app session")
+				return copilotSelection{}, errors.New("unexpected app access")
+			}
+			a.copilotSessions = func() ([]copilotSelection, error) {
+				t.Fatal("startup must not restore or interrupt app sessions")
+				return nil, errors.New("unexpected app access")
+			}
+			saved := object{"github_token": "saved-login", "username": "example", "authMethod": "token",
+				"codexEnabled": false, "claudeEnabled": false, "copilotEnabled": enabled,
+				"futureSetting": "preserve"}
+			if err := writeJSON(a.path("session.json"), saved); err != nil {
+				t.Fatal(err)
+			}
+			backup := []byte(`{"saved-session":{"id":"saved-session","model":"original","providerId":"original-provider"}}`)
+			if err := writeAtomic(a.path("copilot-restore.json"), backup); err != nil {
+				t.Fatal(err)
+			}
+			a.initialize()
+			state := a.snapshot()
+			if state.Copilot != enabled || state.Token != "saved-login" || state.Username != "example" ||
+				state.Method != "token" || state.Codex || state.Claude {
+				t.Fatal("startup changed login or the saved bridge preferences", state.Copilot, state.Codex, state.Claude)
+			}
+			data, err := os.ReadFile(a.path("session.json"))
+			var persisted object
+			if err != nil || json.Unmarshal(data, &persisted) != nil {
+				t.Fatal("could not read startup state", err)
+			}
+			if !reflect.DeepEqual(persisted, saved) {
+				t.Fatal("startup changed unrelated session preferences")
+			}
+			if data, err := os.ReadFile(a.path("copilot-restore.json")); err != nil || !bytes.Equal(data, backup) {
+				t.Fatal("startup lost original provider selections", err)
+			}
+			var status object
+			result := controlCall(a, "/api/status", nil)
+			if json.Unmarshal(result.Body.Bytes(), &status) != nil || status["copilotEnabled"] != enabled {
+				t.Fatal("startup status did not preserve Copilot enablement")
+			}
+			if !enabled {
+				result = httptest.NewRecorder()
+				a.copilotApp(result, copilotRequest("POST", "/v1/responses", `{}`))
+				if result.Code != http.StatusUnauthorized {
+					t.Fatal("disabled startup still allows inference", result.Code)
+				}
+			}
+		})
+	}
+}
+
 func TestCopilotToggleRollsBackWhenSessionCannotBeSaved(t *testing.T) {
 	a := testApp(t, nil)
+	mock := mockCopilotSetup(t, a)
 	a.state = session{Token: "account-b"}
 	if err := os.MkdirAll(a.path("session.json"), 0700); err != nil {
 		t.Fatal(err)
@@ -104,6 +167,13 @@ func TestCopilotToggleRollsBackWhenSessionCannotBeSaved(t *testing.T) {
 	result := controlCall(a, "/api/toggle-copilot", object{})
 	if result.Code != 400 || a.snapshot().Copilot {
 		t.Fatal("unsaved Copilot state was enabled", result.Body.String())
+	}
+	mock.mu.Lock()
+	defer mock.mu.Unlock()
+	for _, command := range mock.requests {
+		if command["type"] != "list_model_providers" && command["type"] != "list_provider_models" {
+			t.Fatal("failed persistence mutated app configuration", command["type"])
+		}
 	}
 }
 

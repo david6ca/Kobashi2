@@ -20,7 +20,7 @@ for size in [16, 32, 128, 256, 512] {
         NSColor.white.setFill()
         NSBezierPath(roundedRect: NSRect(x: 100 * ratio, y: 100 * ratio, width: 824 * ratio, height: 824 * ratio),
                      xRadius: 185 * ratio, yRadius: 185 * ratio).fill()
-        image.draw(in: NSRect(x: 158 * ratio, y: 182 * ratio, width: 660 * ratio, height: 660 * ratio),
+        image.draw(in: NSRect(x: 182 * ratio, y: 182 * ratio, width: 660 * ratio, height: 660 * ratio),
                    from: .zero, operation: .sourceOver, fraction: 1)
         NSGraphicsContext.restoreGraphicsState()
         guard let png = bitmap.representation(using: .png, properties: [:]) else { fatalError("Cannot encode icon") }

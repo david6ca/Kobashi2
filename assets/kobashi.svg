@@ -1,12 +1,13 @@
-<svg viewBox="100 66 298 380" xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="grad" gradientUnits="userSpaceOnUse" x1="100" y1="66" x2="398" y2="446">
-      <stop offset="0%" stop-color="#58a6ff"/>
-      <stop offset="100%" stop-color="#a371f7"/>
+    <linearGradient id="grad" gradientUnits="userSpaceOnUse" x1="56" y1="256" x2="456" y2="256">
+      <stop offset="0%" stop-color="#6d28d9"/>
+      <stop offset="100%" stop-color="#a78bfa"/>
     </linearGradient>
   </defs>
-  <g stroke="url(#grad)" stroke-width="60" stroke-linecap="round" stroke-linejoin="round" fill="none">
-    <path d="M144 256 L368 96"/>
-    <path d="M144 256 L368 416"/>
+  <g fill="url(#grad)">
+    <path d="M128 224 H384 V288 H128 Z"/>
+    <circle cx="128" cy="256" r="72"/>
+    <circle cx="384" cy="256" r="72"/>
   </g>
 </svg>

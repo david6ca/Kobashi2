@@ -32,7 +32,8 @@ const eventMessage = 0x8001
 const trayMessage = 0x8002
 const (
 	windowWidth         = 400
-	windowHeight        = 400
+	windowHeight        = 370
+	footerY             = 338
 	windowStyle         = 0x02ca0000
 	windowExtendedStyle = 0x10000
 )
@@ -67,6 +68,8 @@ const (
 		idNetworkDone
 	*/
 	idCopilot
+	idAppearanceLabel
+	idAppearance
 )
 
 type point struct{ X, Y int32 }
@@ -127,6 +130,7 @@ type Window struct {
 	controls                                                                                   []control
 	view                                                                                       string
 	notice, code, device, verification                                                         string
+	refreshError                                                                               string
 	deviceExpiry, nextPoll                                                                     time.Time
 	interval                                                                                   time.Duration
 	status, settings                                                                           map[string]any
@@ -134,6 +138,7 @@ type Window struct {
 	client                                                                                     *http.Client
 	polling                                                                                    atomic.Bool
 	busy                                                                                       bool
+	pendingBridge                                                                              int
 	focus                                                                                      uintptr
 	tray                                                                                       bool
 	dpi                                                                                        int
@@ -155,7 +160,7 @@ func proc(name string, args ...uintptr) uintptr {
 func wide(value string) *uint16 { p, _ := syscall.UTF16PtrFromString(value); return p }
 
 func ShowError(message string) {
-	proc("MessageBoxW", 0, uintptr(unsafe.Pointer(wide(message))), uintptr(unsafe.Pointer(wide("Kobashi"))), 0x10)
+	proc("MessageBoxW", 0, uintptr(unsafe.Pointer(wide(message))), uintptr(unsafe.Pointer(wide("Kobashi2"))), 0x10)
 }
 func FocusExisting() bool {
 	h := proc("FindWindowW", uintptr(unsafe.Pointer(wide("KobashiNativeWindow"))), 0)
@@ -219,9 +224,8 @@ func (w *Window) build() error {
 		id, x, y, width, height int
 		style                   uintptr
 	}{
-		{"STATIC", "Kobashi", "all", 1, 28, 24, 170, 28, 0},
-		{"BUTTON", "Se&ttings", "all", idSettings, 296, 24, 32, 32, 0x10000},
-		{"BUTTON", "Toggle light/dark &mode", "all", idTheme, 336, 24, 32, 32, 0x10000},
+		{"STATIC", "Kobashi2", "all", 1, 28, 24, 170, 28, 0},
+		{"BUTTON", "Se&ttings", "all", idSettings, 336, 24, 32, 32, 0x10000},
 		{"BUTTON", "Not &Connected", "sign-in", idConnect, 95, 160, 210, 42, 0x10000 | 1},
 		{"STATIC", "Have an access token?", "idle", 3, 99, 215, 119, 24, 0},
 		{"BUTTON", "Paste it instead", "idle", idTokenView, 218, 215, 91, 24, 0x10000},
@@ -232,20 +236,20 @@ func (w *Window) build() error {
 		{"BUTTON", "Open GitHub", "device", idBrowser, 70, 174, 260, 24, 0x10000},
 		{"STATIC", "", "device", 6, 53, 206, 294, 42, 1},
 		{"BUTTON", "&Copy", "device", idCopy, 166, 253, 68, 24, 0x10000},
-		{"STATIC", "", "connected", 7, 50, 119, 175, 27, 0},
-		{"BUTTON", "Connecte&d", "connected", idDisconnect, 255, 119, 94, 28, 0x10000},
-		{"STATIC", "", "connected", 8, 50, 160, 299, 16, 0},
-		{"BUTTON", "C&laude Bridge", "connected", idClaude, 40, 216, 320, 44, 0x10000 | 3},
-		{"BUTTON", "&Codex Bridge", "connected", idCodex, 40, 260, 320, 44, 0x10000 | 3},
-		{"BUTTON", "Copilot &Bridge", "connected", idCopilot, 40, 304, 320, 44, 0x10000 | 3},
+		{"STATIC", "", "connected", 7, 50, 87, 175, 27, 0},
+		{"BUTTON", "Connecte&d", "connected", idDisconnect, 255, 87, 94, 28, 0x10000},
+		{"STATIC", "", "connected", 8, 50, 128, 299, 16, 0},
+		{"BUTTON", "C&laude", "connected", idClaude, 40, 184, 320, 44, 0x10000 | 3},
+		{"BUTTON", "&Codex", "connected", idCodex, 40, 228, 320, 44, 0x10000 | 3},
+		{"BUTTON", "Cop&ilot", "connected", idCopilot, 40, 272, 320, 44, 0x10000 | 3},
 		{"STATIC", "Settings", "settings", 9, 32, 70, 260, 32, 0},
-		{"BUTTON", "&Start at login", "settings", idStartup, 32, 114, 336, 80, 0x10000 | 3},
-		{"STATIC", "Start Kobashi when you sign in to your computer.", "settings", 10, 48, 152, 268, 34, 0x100},
-		{"BUTTON", "&Close to system tray", "settings", idTray, 32, 206, 336, 80, 0x10000 | 3},
-		{"STATIC", "Keep bridges running when the window is closed.", "settings", 11, 48, 244, 268, 34, 0x100},
+		{"BUTTON", "&Start at login", "settings", idStartup, 32, 114, 336, 30, 0x10000 | 3},
+		{"BUTTON", "&Close to system tray", "settings", idTray, 32, 162, 336, 30, 0x10000 | 3},
+		{"STATIC", "&Appearance", "settings", idAppearanceLabel, 40, 214, 132, 24, 0},
+		{"COMBOBOX", "", "settings", idAppearance, 188, 210, 172, 30, 0x10000 | 0x200000 | 3},
 		/*
 			{"BUTTON", "Connect to &Server", "settings", idClientView, 32, 294, 164, 28, 0x10000},
-			{"BUTTON", "Share this &Kobashi", "settings", idServerView, 204, 294, 164, 28, 0x10000},
+			{"BUTTON", "Share this &Kobashi2", "settings", idServerView, 204, 294, 164, 28, 0x10000},
 			{"STATIC", "Connect to Server", "client", 20, 32, 70, 336, 28, 0},
 			{"STATIC", "Server URL", "client", 21, 32, 112, 336, 20, 0},
 			{"EDIT", "", "client", idRemoteURL, 32, 136, 336, 26, 0x10000 | 0x80 | 0x800000},
@@ -253,7 +257,7 @@ func (w *Window) build() error {
 			{"EDIT", "", "client", idRemoteToken, 32, 196, 336, 26, 0x10000 | 0x80 | 0x20 | 0x800000},
 			{"BUTTON", "&Find Servers", "client", idDiscover, 32, 238, 164, 32, 0x10000},
 			{"BUTTON", "&Connect", "client", idRemoteConnect, 204, 238, 164, 32, 0x10000},
-			{"STATIC", "Share this Kobashi", "server", 23, 32, 70, 336, 28, 0},
+			{"STATIC", "Share this Kobashi2", "server", 23, 32, 70, 336, 28, 0},
 			{"STATIC", "Listen IP:port", "server", 24, 32, 112, 336, 20, 0},
 			{"EDIT", "", "server", idListen, 32, 136, 336, 26, 0x10000 | 0x80 | 0x800000},
 			{"STATIC", "Access token (blank keeps or generates one)", "server", 25, 32, 172, 336, 20, 0},
@@ -263,9 +267,8 @@ func (w *Window) build() error {
 			{"BUTTON", "&Back", "network", idNetworkDone, 32, 328, 336, 32, 0x10000},
 		*/
 		{"STATIC", "", "all", 12, 32, 252, 336, 70, 0},
-		{"BUTTON", "&Done", "settings", idDone, 32, 328, 336, 32, 0x10000},
-		{"BUTTON", "&Quit Kobashi", "settings", idQuit, 32, 368, 112, 24, 0x10000},
-		{"BUTTON", "Version", "all", idProject, 252, 368, 116, 24, 0x10000},
+		{"BUTTON", "&Done", "settings", idDone, 32, 290, 336, 32, 0x10000},
+		{"BUTTON", "Version", "all", idProject, 252, footerY, 116, 24, 0x10000},
 	}
 	for _, item := range items {
 		if err := w.add(item.class, item.title, item.view, item.id, item.x, item.y, item.width, item.height, item.style); err != nil {
@@ -273,6 +276,12 @@ func (w *Window) build() error {
 		}
 	}
 	w.fonts()
+	for _, title := range []string{"Auto", "Light", "Dark"} {
+		if index := proc("SendMessageW", w.control(idAppearance), 0x143, 0, uintptr(unsafe.Pointer(wide(title)))); index == ^uintptr(0) || index == ^uintptr(1) {
+			return errors.New("could not create appearance options")
+		}
+	}
+	proc("SendMessageW", w.control(idAppearance), 0x1701, 3, 0)
 	proc("SendMessageW", w.control(idToken), 0xc5, 8192, 0)
 	proc("SendMessageW", w.control(idToken), 0x1501, 1, uintptr(unsafe.Pointer(wide("Paste your access token"))))
 	/*
@@ -338,7 +347,7 @@ func appIcon() uintptr {
 func (w *Window) addTray() error {
 	n := notifyIcon{HWnd: w.Handle, ID: 1, Flags: 7, Message: trayMessage, Icon: w.icon}
 	n.Size = uint32(unsafe.Sizeof(n))
-	copy(n.Tip[:], syscall.StringToUTF16("Kobashi"))
+	copy(n.Tip[:], syscall.StringToUTF16("Kobashi2"))
 	ok, _, err := shell.NewProc("Shell_NotifyIconW").Call(0, uintptr(unsafe.Pointer(&n)))
 	w.tray = ok != 0
 	if !w.tray {
@@ -390,9 +399,16 @@ func (w *Window) request(path string, value map[string]any) (map[string]any, err
 	return out, nil
 }
 func (w *Window) post(path string, value map[string]any) {
+	if w.busy || w.view == "starting" {
+		return
+	}
 	w.focus = proc("GetFocus")
 	w.busy = true
-	w.notice = "Working..."
+	w.pendingBridge = map[string]int{"/api/toggle-codex": idCodex, "/api/toggle-claude": idClaude, "/api/toggle-copilot": idCopilot}[path]
+	w.notice = ""
+	if w.pendingBridge == 0 && path != "/api/settings" && path != "/api/appearance" {
+		w.notice = "Working..."
+	}
 	w.render()
 	go func() {
 		out, err := w.request(path, value)
@@ -425,15 +441,21 @@ func (w *Window) render() {
 	}
 	for _, c := range w.controls {
 		show := c.view == "all" || c.view == w.view || (c.view == "sign-in" && (w.view == "idle" || w.view == "token"))
+		if c.id == idConnect && w.view == "starting" {
+			show = true
+		}
 		// || (c.view == "network" && (w.view == "client" || w.view == "server"))
 		if c.id == 8 {
 			_, _, show = w.usage()
 			show = show && w.view == "connected"
 		}
 		if c.id == 12 && w.view == "connected" {
-			show = w.connectedOffset() == 0
+			show = w.notice != "" || w.refreshError != "" || text(w.status["error"]) != ""
 		}
-		if c.id == 9 && (w.notice != "" || text(w.status["error"]) != "" || text(w.settings["error"]) != "") {
+		if c.id == 1 && w.view == "connected" && (w.notice != "" || w.refreshError != "" || text(w.status["error"]) != "") {
+			show = false
+		}
+		if c.id == 9 && (w.notice != "" || w.refreshError != "" || text(w.status["error"]) != "" || text(w.settings["error"]) != "") {
 			show = false
 		}
 		visible := uintptr(0)
@@ -441,9 +463,9 @@ func (w *Window) render() {
 			visible = 5
 		}
 		proc("ShowWindow", c.handle, visible)
-		if c.id >= idConnect && c.id != idQuit && c.id != idDone {
+		if c.id >= idConnect && c.id != idDone {
 			enabled := uintptr(1)
-			if w.busy {
+			if w.busy || (w.view == "starting" && c.id != idProject) {
 				enabled = 0
 			}
 			if c.id == idLogin && w.tokenValue() == "" {
@@ -457,6 +479,14 @@ func (w *Window) render() {
 			proc("EnableWindow", c.handle, enabled)
 		}
 	}
+	connectTitle := "Not &Connected"
+	if w.view == "starting" {
+		connectTitle = "Starting..."
+		if w.notice != "" || w.refreshError != "" {
+			connectTitle = "Unavailable"
+		}
+	}
+	w.setText(idConnect, connectTitle)
 	check := func(id int, value any) {
 		n := uintptr(0)
 		if value == true {
@@ -469,6 +499,16 @@ func (w *Window) render() {
 	check(idCopilot, w.status["copilotEnabled"])
 	check(idStartup, w.settings["startAtLogin"])
 	check(idTray, w.settings["closeToTray"])
+	appearance := uintptr(0)
+	switch text(w.status["appearance"]) {
+	case "light":
+		appearance = 1
+	case "dark":
+		appearance = 2
+	}
+	if proc("SendMessageW", w.control(idAppearance), 0x157, 0, 0) == 0 {
+		proc("SendMessageW", w.control(idAppearance), 0x14e, appearance, 0)
+	}
 	w.setText(6, w.code)
 	account := "@" + text(w.status["username"])
 	/*
@@ -492,6 +532,9 @@ func (w *Window) render() {
 		w.setText(idBrowser, w.verification)
 	}
 	notice := w.notice
+	if notice == "" {
+		notice = w.refreshError
+	}
 	if notice == "" {
 		notice = text(w.status["error"])
 	}
@@ -520,24 +563,33 @@ func (w *Window) accept(e event) {
 	if e.path == "refresh" {
 		if e.value != nil {
 			w.status = e.value
-			if w.view != "settings" && w.status["connected"] == true {
+			if w.status["ready"] == false {
+				if w.view != "settings" {
+					w.view = "starting"
+				}
+			} else if w.view == "starting" {
+				w.view = "idle"
+			}
+			if w.status["ready"] != false && w.view != "settings" && w.status["connected"] == true {
 				// && w.view != "client" && w.view != "server"
 				w.view = "connected"
 			}
-			if w.view == "connected" && w.status["connected"] != true {
+			if w.status["ready"] != false && w.view == "connected" && w.status["connected"] != true {
 				w.view = "idle"
 			}
 		}
 		if e.settings != nil {
 			w.settings = e.settings
 		}
+		w.refreshError = ""
 		if e.err != nil {
-			w.notice = e.err.Error()
+			w.refreshError = e.err.Error()
 		}
 		w.render()
 		return
 	}
 	w.busy = false
+	w.pendingBridge = 0
 	w.notice = ""
 	if e.err != nil {
 		w.notice = e.err.Error()
@@ -595,7 +647,10 @@ func (w *Window) accept(e event) {
 		}
 	case "/api/settings":
 		w.settings = e.value
-		w.notice = "Settings saved."
+	case "/api/toggle-codex", "/api/toggle-claude", "/api/toggle-copilot":
+		for _, key := range []string{"codexEnabled", "claudeEnabled", "copilotEnabled"} {
+			w.status[key] = e.value[key]
+		}
 	/*
 		case "/api/server":
 			w.setText(idServerToken, text(e.value["token"]))
@@ -656,10 +711,6 @@ func (w *Window) restoreFocus() {
 }
 func (w *Window) command(id int) {
 	switch id {
-	case 10:
-		proc("SendMessageW", w.control(idStartup), 0xf5, 0, 0)
-	case 11:
-		proc("SendMessageW", w.control(idTray), 0xf5, 0, 0)
 	case idConnect:
 		w.post("/api/start", map[string]any{})
 	case idTokenView:
@@ -677,6 +728,9 @@ func (w *Window) command(id int) {
 		if w.status["connected"] == true {
 			w.view = "connected"
 		}
+		if w.status["ready"] == false {
+			w.view = "starting"
+		}
 		w.notice = ""
 		w.render()
 		proc("SetFocus", w.control(idSettings))
@@ -684,7 +738,7 @@ func (w *Window) command(id int) {
 		if err := copyClipboard(w.Handle, w.code); err != nil {
 			w.notice = err.Error()
 		} else {
-			w.notice = "Code copied."
+			w.notice = ""
 		}
 		w.render()
 	case idBrowser:
@@ -701,6 +755,10 @@ func (w *Window) command(id int) {
 	case idDisconnect:
 		w.post("/api/disconnect", map[string]any{})
 	case idSettings:
+		if w.view == "settings" {
+			w.command(idDone)
+			return
+		}
 		w.view = "settings"
 		w.notice = ""
 		w.render()
@@ -743,12 +801,12 @@ func (w *Window) command(id int) {
 		}
 		checked := proc("SendMessageW", w.control(id), 0xf0, 0, 0) == 1
 		w.post("/api/settings", map[string]any{key: checked})
-	case idTheme:
-		mode := "dark"
-		if text(w.status["appearance"]) == "dark" || (text(w.status["appearance"]) == "system" && systemDark()) {
-			mode = "light"
+	case idAppearance:
+		index := proc("SendMessageW", w.control(idAppearance), 0x147, 0, 0)
+		modes := []string{"system", "light", "dark"}
+		if index < uintptr(len(modes)) && modes[index] != text(w.status["appearance"]) {
+			w.post("/api/appearance", map[string]any{"appearance": modes[index]})
 		}
-		w.post("/api/appearance", map[string]any{"appearance": mode})
 	case idProject:
 		if err := OpenURL("https://github.com/david6ca/Kobashi2"); err != nil {
 			w.notice = err.Error()
@@ -846,8 +904,8 @@ func (w *Window) fixedSize(x, y int) {
 func (w *Window) trayMenu() {
 	menu := proc("CreatePopupMenu")
 	defer proc("DestroyMenu", menu)
-	proc("AppendMenuW", menu, 0, 1, uintptr(unsafe.Pointer(wide("Show Kobashi"))))
-	proc("AppendMenuW", menu, 0, 2, uintptr(unsafe.Pointer(wide("Quit Kobashi"))))
+	proc("AppendMenuW", menu, 0, 1, uintptr(unsafe.Pointer(wide("Show Kobashi2"))))
+	proc("AppendMenuW", menu, 0, 2, uintptr(unsafe.Pointer(wide("Quit Kobashi2"))))
 	var p point
 	proc("GetCursorPos", uintptr(unsafe.Pointer(&p)))
 	proc("SetForegroundWindow", w.Handle)
@@ -946,7 +1004,9 @@ func windowProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		}
 		return 0
 	case 0x111:
-		if wp>>16 == 0 {
+		if wp>>16 == 1 && int(wp&0xffff) == idAppearance {
+			w.command(idAppearance)
+		} else if wp>>16 == 0 {
 			w.command(int(wp & 0xffff))
 		} else if wp>>16 == 0x300 && int(wp&0xffff) == idToken {
 			// || int(wp&0xffff) == idRemoteURL || int(wp&0xffff) == idRemoteToken
@@ -1069,7 +1129,7 @@ func Run(app *bridge.App, hidden bool) error {
 	} else {
 		proc("SetProcessDPIAware")
 	}
-	w := &Window{app: app, view: "idle", dpi: 96, events: make(chan event, 32), status: map[string]any{}, settings: map[string]any{"startAtLogin": false, "closeToTray": true}, client: &http.Client{Transport: &http.Transport{Proxy: nil}}}
+	w := &Window{app: app, view: "starting", dpi: 96, events: make(chan event, 32), status: map[string]any{}, settings: map[string]any{"startAtLogin": false, "closeToTray": true}, client: &http.Client{Transport: &http.Transport{Proxy: nil}}}
 	if err := w.loadArtwork(); err != nil {
 		return err
 	}
@@ -1089,7 +1149,7 @@ func Run(app *bridge.App, hidden bool) error {
 		return err
 	}
 	defer user.NewProc("UnregisterClassW").Call(uintptr(unsafe.Pointer(wide("KobashiNativeWindow"))), 0)
-	h, _, err := user.NewProc("CreateWindowExW").Call(windowExtendedStyle, uintptr(unsafe.Pointer(wide("KobashiNativeWindow"))), uintptr(unsafe.Pointer(wide("Kobashi"))), windowStyle, 100, 100, windowWidth, windowHeight, 0, 0, 0, 0)
+	h, _, err := user.NewProc("CreateWindowExW").Call(windowExtendedStyle, uintptr(unsafe.Pointer(wide("KobashiNativeWindow"))), uintptr(unsafe.Pointer(wide("Kobashi2"))), windowStyle, 100, 100, windowWidth, windowHeight, 0, 0, 0, 0)
 	if h == 0 {
 		return err
 	}

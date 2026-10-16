@@ -68,6 +68,85 @@ func controlCall(a *App, path string, body object) *httptest.ResponseRecorder {
 	a.control(w, r)
 	return w
 }
+
+func TestStartupStatusSeparatesLoadingFromSignedOut(t *testing.T) {
+	for _, fixture := range []struct {
+		name      string
+		data      string
+		connected bool
+		error     bool
+	}{
+		{name: "no-login"},
+		{name: "saved-login", data: `{"github_token":"saved-test-login","username":"example","codexEnabled":false,"claudeEnabled":false}`, connected: true},
+		{name: "invalid-login-file", data: `{`, error: true},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			a := testApp(t, nil)
+			if fixture.data != "" {
+				if err := writeAtomic(a.path("session.json"), []byte(fixture.data)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var status object
+			result := controlCall(a, "/api/status", nil)
+			if json.Unmarshal(result.Body.Bytes(), &status) != nil || status["ready"] != false {
+				t.Fatal("initial status did not report that login was still loading", result.Body.String())
+			}
+			a.initialize()
+			result = controlCall(a, "/api/status", nil)
+			if json.Unmarshal(result.Body.Bytes(), &status) != nil || status["ready"] != true ||
+				status["connected"] != fixture.connected || (str(status["error"]) != "") != fixture.error {
+				t.Fatal("startup did not resolve login state or retain its real error", result.Body.String())
+			}
+			if strings.Contains(result.Body.String(), "saved-test-login") {
+				t.Fatal("startup status leaked the saved credential")
+			}
+		})
+	}
+}
+
+func TestStartupWaitsForClientConfigurationBeforeReportingReady(t *testing.T) {
+	a := testApp(t, func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("offline startup fixture")
+	})
+	if err := writeJSON(a.path("session.json"), session{Token: "saved-test-login", Codex: true}); err != nil {
+		t.Fatal(err)
+	}
+	configuring, release, initialized := make(chan struct{}, 1), make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	finish := func() { once.Do(func() { close(release) }) }
+	defer finish()
+	a.options.ReadEnvironment = func(string) (*string, error) {
+		select {
+		case configuring <- struct{}{}:
+		default:
+		}
+		<-release
+		return nil, nil
+	}
+	go func() { a.initialize(); close(initialized) }()
+	select {
+	case <-configuring:
+	case <-time.After(5 * time.Second):
+		t.Fatal("startup never reached client configuration")
+	}
+	var status object
+	result := controlCall(a, "/api/status", nil)
+	if json.Unmarshal(result.Body.Bytes(), &status) != nil || status["ready"] != false || status["connected"] != true {
+		t.Fatal("startup reported ready before finishing saved client configuration", result.Body.String())
+	}
+	finish()
+	select {
+	case <-initialized:
+	case <-time.After(5 * time.Second):
+		t.Fatal("startup did not finish after configuring clients")
+	}
+	result = controlCall(a, "/api/status", nil)
+	if json.Unmarshal(result.Body.Bytes(), &status) != nil || status["ready"] != true || status["connected"] != true {
+		t.Fatal("startup did not publish the restored login as ready", result.Body.String())
+	}
+}
+
 func TestServerClientConfigurationAndRoutesAreDisabled(t *testing.T) {
 	a := testApp(t, func(*http.Request) (*http.Response, error) {
 		t.Error("disabled network configuration made an upstream request")

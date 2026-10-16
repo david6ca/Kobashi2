@@ -56,6 +56,7 @@ type App struct {
 	mu                            sync.RWMutex
 	actions, tokenMu, discoveryMu sync.Mutex
 	state                         session
+	ready                         bool
 	bearer                        string
 	expiry                        float64
 	settings                      Settings
@@ -76,7 +77,12 @@ type App struct {
 	stopOnce                      sync.Once
 	stopError                     error
 	watchOnce                     sync.Once
+	copilotWatchOnce              sync.Once
 	closed                        chan struct{}
+	copilotSession                func() (copilotSelection, error)
+	copilotSessions               func() ([]copilotSelection, error)
+	copilotLocalSessions          func() ([]copilotSelection, error)
+	copilotRouting                copilotRouting
 	// shared          sharedConfig
 	// sharedServer    *http.Server
 	// sharedDiscovery *lanService
@@ -166,7 +172,7 @@ func (a *App) report(err error) {
 	if err == nil {
 		return
 	}
-	log.Printf("Kobashi: %v", err)
+	log.Printf("Kobashi2: %v", err)
 	a.mu.Lock()
 	a.lastError = err.Error()
 	a.mu.Unlock()
@@ -181,7 +187,7 @@ func (a *App) Start() error {
 			for _, l := range listeners {
 				l.Close()
 			}
-			return fmt.Errorf("port %d is already in use; quit the existing Kobashi yourself before switching versions: %w", port, err)
+			return fmt.Errorf("port %d is already in use; quit the existing Kobashi2 (or Kobashi) yourself before switching versions: %w", port, err)
 		}
 		listeners = append(listeners, listener)
 	}
@@ -199,11 +205,17 @@ func (a *App) Start() error {
 	}
 	a.wg.Add(1)
 	go func() { defer a.wg.Done(); a.initialize() }()
+	a.startCopilotWatcher()
 	return nil
 }
 func (a *App) initialize() {
 	a.actions.Lock()
 	defer a.actions.Unlock()
+	defer func() {
+		a.mu.Lock()
+		a.ready = true
+		a.mu.Unlock()
+	}()
 	/*
 		defer func() {
 			if a.shared.Enabled && a.ctx.Err() == nil {
@@ -366,6 +378,11 @@ func (a *App) saveSession() error { return writeJSON(a.path("session.json"), a.s
 func (a *App) disconnect() error {
 	state := a.snapshot()
 	var err error
+	if state.Copilot {
+		if err = a.restoreCopilot(); err != nil {
+			return err
+		}
+	}
 	if state.Codex {
 		err = errors.Join(err, a.restoreCodex())
 	}
@@ -571,7 +588,7 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 		case "/api/status":
 			a.mu.RLock()
 			s := a.state
-			status := object{"connected": s.active(), "username": s.Username, "authMethod": s.Method, "codexEnabled": s.Codex, "claudeEnabled": s.Claude,
+			status := object{"ready": a.ready, "connected": s.active(), "username": s.Username, "authMethod": s.Method, "codexEnabled": s.Codex, "claudeEnabled": s.Claude,
 				"copilotEnabled": s.Copilot, "copilotURL": a.CopilotURL(),
 				"version": a.options.Version, "error": a.lastError, "lastEffort": a.lastEffort, "usage": a.usage, "appearance": a.appearance}
 			// status["remoteURL"] = s.RemoteURL
@@ -606,7 +623,7 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 	a.actions.Lock()
 	defer a.actions.Unlock()
 	if a.ctx.Err() != nil {
-		respond(w, 503, object{"error": "Kobashi is shutting down"})
+		respond(w, 503, object{"error": "Kobashi2 is shutting down"})
 		return
 	}
 	var result any = object{"ok": true}
@@ -689,13 +706,21 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 			err = errors.New("not connected")
 			break
 		}
-		a.mu.Lock()
-		a.state.Copilot = !state.Copilot
-		a.mu.Unlock()
-		if err = a.saveSession(); err != nil {
+		if !state.Copilot {
+			var notice string
+			notice, err = a.enableCopilot()
+			result = object{"codexEnabled": state.Codex, "claudeEnabled": state.Claude, "copilotEnabled": a.snapshot().Copilot, "notice": notice}
+			break
+		}
+		if err = a.restoreCopilot(); err == nil {
 			a.mu.Lock()
-			a.state.Copilot = state.Copilot
+			a.state.Copilot = false
 			a.mu.Unlock()
+			if err = a.saveSession(); err != nil {
+				a.mu.Lock()
+				a.state.Copilot = true
+				a.mu.Unlock()
+			}
 		}
 		result = object{"codexEnabled": state.Codex, "claudeEnabled": state.Claude, "copilotEnabled": a.snapshot().Copilot}
 	case "/api/toggle-codex", "/api/toggle-claude":

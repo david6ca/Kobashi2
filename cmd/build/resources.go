@@ -58,7 +58,7 @@ func versionResource(version string) []byte {
 		put32(fixed, i*4, n)
 	}
 	children := [][]byte{}
-	for _, pair := range [][2]string{{"FileDescription", "Kobashi"}, {"ProductName", "Kobashi"}, {"FileVersion", version}, {"ProductVersion", version}, {"OriginalFilename", "Kobashi.exe"}} {
+	for _, pair := range [][2]string{{"FileDescription", "Kobashi2"}, {"ProductName", "Kobashi2"}, {"FileVersion", version}, {"ProductVersion", version}, {"OriginalFilename", "Kobashi2.exe"}} {
 		units := utf16.Encode([]rune(pair[1] + "\x00"))
 		value := make([]byte, len(units)*2)
 		for i, u := range units {

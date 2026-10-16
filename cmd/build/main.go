@@ -20,10 +20,13 @@ func main() {
 	target := flag.String("target", runtime.GOOS, "windows or darwin")
 	destination := flag.String("output", "", "Directory for finished artifacts; default: dist")
 	testMac := flag.Bool("test-mac", false, "Run isolated Cocoa lifecycle checks on macOS")
+	testArtwork := flag.Bool("test-mac-artwork", false, "Run offscreen Cocoa artwork checks without opening windows")
 	smoke := flag.Bool("smoke", false, "Run the interactive isolated Cocoa smoke check")
 	flag.Parse()
 	var err error
-	if *testMac {
+	if *testArtwork {
+		err = checkMacHarness("macos-artwork.swift")
+	} else if *testMac {
 		err = checkMac(*smoke)
 	} else {
 		err = build(*target, *destination)
@@ -188,7 +191,7 @@ func build(target, destination string) error {
 	}
 	defer os.RemoveAll(workspace)
 	fmt.Println("Native build workspace:", workspace)
-	for _, name := range []string{"go.mod", "package.json"} {
+	for _, name := range []string{"go.mod", "go.sum", "package.json"} {
 		if err = copyFile(filepath.Join(source, name), filepath.Join(workspace, name)); err != nil {
 			return err
 		}
@@ -219,7 +222,7 @@ func build(target, destination string) error {
 	if err = os.MkdirAll(output, 0700); err != nil {
 		return err
 	}
-	name := "Kobashi.exe"
+	name := "Kobashi2.exe"
 	if target == "windows" {
 		icon, readErr := os.ReadFile(filepath.Join(workspace, "assets", "kobashi-icon.ico"))
 		if readErr != nil {
@@ -234,7 +237,7 @@ func build(target, destination string) error {
 			return err
 		}
 	} else {
-		name = "Kobashi.app"
+		name = "Kobashi2.app"
 		if err = buildMac(workspace, output, env, pkg.Version); err != nil {
 			return err
 		}
@@ -253,7 +256,7 @@ func build(target, destination string) error {
 	return nil
 }
 func buildMac(workspace, output string, env []string, version string) error {
-	app := filepath.Join(output, "Kobashi.app", "Contents")
+	app := filepath.Join(output, "Kobashi2.app", "Contents")
 	binaries := filepath.Join(app, "Resources", "bin")
 	if err := os.MkdirAll(binaries, 0700); err != nil {
 		return err
@@ -296,7 +299,7 @@ func buildMac(workspace, output string, env []string, version string) error {
 	}
 	plist := `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict><key>CFBundleName</key><string>Kobashi</string><key>CFBundleDisplayName</key><string>Kobashi</string>
+<plist version="1.0"><dict><key>CFBundleName</key><string>Kobashi2</string><key>CFBundleDisplayName</key><string>Kobashi2</string>
 <key>CFBundleIdentifier</key><string>com.xjin6.kobashi</string><key>CFBundleVersion</key><string>` + version + `</string>
 <key>CFBundleShortVersionString</key><string>` + version + `</string><key>CFBundleExecutable</key><string>kobashi</string>
 <key>CFBundleIconFile</key><string>AppIcon</string><key>CFBundlePackageType</key><string>APPL</string>
@@ -401,7 +404,7 @@ func publish(dir, built, name string) error {
 		return errors.New("release copy checksum mismatch")
 	}
 	lines := []string{}
-	for _, release := range []string{"Kobashi.exe", "Kobashi.app"} {
+	for _, release := range []string{"Kobashi2.exe", "Kobashi2.app"} {
 		if release == name {
 			lines = append(lines, expected...)
 			continue

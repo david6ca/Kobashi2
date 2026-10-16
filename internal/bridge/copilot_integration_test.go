@@ -2,17 +2,258 @@ package bridge
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/coder/websocket/wsjson"
 )
+
+func TestInstalledCopilotLiveChat(t *testing.T) {
+	id := os.Getenv("KOBASHI_TEST_COPILOT_LIVE_SESSION")
+	if id == "" {
+		t.Skip("set KOBASHI_TEST_COPILOT_LIVE_SESSION to a new disposable idle chat to verify real app inference")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := filepath.Join(home, ".copilot", "data.db")
+	selectedData, err := copilotSessionData(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var selected copilotSelection
+	if len(selectedData) > 0 && json.Unmarshal(selectedData, &selected) != nil {
+		t.Fatal("invalid app selection")
+	}
+	if selected.ID == id {
+		t.Fatal("the live check must not target the user's selected chat")
+	}
+	read := func(query string) ([]copilotSelection, error) {
+		data, err := copilotQuery(db, query)
+		if err != nil {
+			return nil, err
+		}
+		return decodeCopilotSessions(data)
+	}
+	sessions, err := read(copilotBridgeSessionsSQL)
+	if err != nil || len(sessions) != 0 {
+		t.Fatal("the live check requires no existing sessions dependent on Kobashi", err)
+	}
+	testSessions := func() ([]copilotSelection, error) {
+		sessions, err := read(copilotLocalSessionsSQL)
+		if err != nil {
+			return nil, err
+		}
+		for _, session := range sessions {
+			if session.ID == id {
+				return []copilotSelection{session}, nil
+			}
+		}
+		return nil, errors.New("the disposable test chat is unavailable")
+	}
+	readTest := func() (copilotSelection, error) {
+		sessions, err := testSessions()
+		if err != nil {
+			return copilotSelection{}, err
+		}
+		return sessions[0], nil
+	}
+	original, err := readTest()
+	if err != nil || original.ready() != nil || original.customProvider() || original.ProviderID == copilotProviderID {
+		t.Fatal("the live check requires a new idle local chat", err)
+	}
+	if os.Getenv("KOBASHI_TEST_COPILOT_DORMANT") == "1" {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		control, err := connectCopilotControl(ctx, home)
+		if err != nil {
+			t.Fatal(err)
+		}
+		status, err := control.call(ctx, object{"type": "probe_session_liveness", "session_id": id, "recover": false}, "session_liveness_result")
+		control.conn.CloseNow()
+		if err != nil || status["status"] != "idle_without_runtime" || status["is_running"] != false {
+			t.Fatal("the cold-start check requires a dormant disposable chat", err)
+		}
+		t.Log("LIVE_CHAT_DORMANT")
+	}
+	eventPath := filepath.Join(home, ".copilot", "session-state", id, "events.jsonl")
+	history, err := os.ReadFile(eventPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(history), "\n") {
+		var event object
+		if json.Unmarshal([]byte(line), &event) == nil && event["type"] == "user.message" {
+			t.Fatal("the live check must not send another message to an existing conversation")
+		}
+	}
+	data, err := os.ReadFile(filepath.Join(home, ".kobashi", "session.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var account session
+	if json.Unmarshal(data, &account) != nil || account.Token == "" {
+		t.Fatal("Kobashi must already have an authorized GitHub account")
+	}
+	client := newHTTPClient()
+	a := testApp(t, client.Do)
+	a.state = session{Token: account.Token, Method: account.Method}
+	a.copilotSession, a.copilotLocalSessions = readTest, testSessions
+	a.copilotSessions = func() ([]copilotSelection, error) {
+		sessions, err := testSessions()
+		if err == nil && sessions[0].ProviderID != copilotProviderID {
+			sessions = nil
+		}
+		return sessions, err
+	}
+	for _, name := range []string{"ws.port", "ws.token"} {
+		data, err := os.ReadFile(filepath.Join(home, ".copilot", "run", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := writeAtomic(filepath.Join(a.options.Home, ".copilot", "run", name), data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:18925")
+	if err != nil {
+		t.Fatal("the live check never replaces a running Kobashi listener", err)
+	}
+	var requests atomic.Int32
+	var sentAt, firstRequest atomic.Int64
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			requests.Add(1)
+			if sentAt.Load() != 0 {
+				firstRequest.CompareAndSwap(0, time.Now().UnixNano())
+			}
+		}
+		a.copilotApp(w, r)
+	}), ReadHeaderTimeout: 10 * time.Second}
+	a.servers = append(a.servers, server)
+	a.wg.Add(1)
+	go func() {
+		defer a.wg.Done()
+		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			t.Error(err)
+		}
+	}()
+	t.Cleanup(func() {
+		if err := a.restoreCopilot(); err != nil {
+			t.Error("could not restore the disposable chat's original selection", err)
+		} else {
+			current, err := readTest()
+			if err != nil || !sameCopilotChoice(original, current) {
+				t.Error("the disposable chat's original selection was not restored", err)
+			} else {
+				t.Log("LIVE_CHAT_RESTORED")
+			}
+		}
+	})
+	if _, err := a.enableCopilot(); err != nil {
+		t.Fatal(err)
+	}
+	current, err := readTest()
+	connectionDeadline := time.Now().Add(30 * time.Second)
+	for err == nil && current.ProviderID != copilotProviderID && time.Now().Before(connectionDeadline) {
+		if err := a.syncCopilot(); err != nil {
+			t.Fatal("automatic session routing failed", err)
+		}
+		time.Sleep(100 * time.Millisecond)
+		current, err = readTest()
+	}
+	if err != nil || current.ProviderID != copilotProviderID {
+		t.Fatal("the disposable chat was not connected before its first message", err)
+	}
+	t.Log("LIVE_CHAT_READY", id)
+	ctx, cancel := context.WithTimeout(a.ctx, 3*time.Minute)
+	defer cancel()
+	control, err := connectCopilotControl(ctx, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer control.conn.CloseNow()
+	baseline, err := os.ReadFile(eventPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+	requestID := rand.Text()
+	sentAt.Store(time.Now().UnixNano())
+	if err := wsjson.Write(ctx, control.conn, object{"type": "send_message", "session_id": id,
+		"prompt": "hi", "initial_prompt": true, "display_prompt": "hi", "canvas_context": []any{}, "request_id": requestID}); err != nil {
+		t.Fatal("could not send the disposable chat's first message", err)
+	}
+	readErrors := make(chan error, 1)
+	go func() {
+		for {
+			var message object
+			if err := wsjson.Read(ctx, control.conn, &message); err != nil {
+				readErrors <- err
+				return
+			}
+			if message["request_id"] == requestID && message["type"] == "error" {
+				readErrors <- errors.New("the app rejected the disposable chat's first message")
+				return
+			}
+		}
+	}()
+	deadline := time.Now().Add(3 * time.Minute)
+	for time.Now().Before(deadline) {
+		select {
+		case err := <-readErrors:
+			t.Fatal("the live app control connection failed", err)
+		default:
+		}
+		data, err := os.ReadFile(eventPath)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Fatal(err)
+		}
+		if len(data) < len(baseline) {
+			t.Fatal("the disposable chat's event history was replaced during the check")
+		}
+		replied, idle := false, false
+		for _, line := range strings.Split(string(data[len(baseline):]), "\n") {
+			var event object
+			if json.Unmarshal([]byte(line), &event) != nil {
+				continue
+			}
+			if event["type"] == "assistant.message" && str(nested(event, "data", "content")) != "" {
+				replied = true
+			}
+			if event["type"] == "assistant.turn_end" {
+				idle = true
+			}
+		}
+		current, err = readTest()
+		if replied && idle && requests.Load() > 0 && err == nil && current.ready() == nil {
+			if firstRequest.Load() == 0 {
+				t.Fatal("the reply did not use Kobashi after the first message was sent")
+			}
+			dispatch := time.Duration(firstRequest.Load() - sentAt.Load())
+			t.Logf("LIVE_CHAT_DISPATCH %s", dispatch)
+			if dispatch > 15*time.Second {
+				t.Errorf("the first message waited %s before inference; want at most 15s", dispatch)
+			}
+			t.Logf("LIVE_CHAT_REPLIED through Kobashi (%d inference requests)", requests.Load())
+			return
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	t.Fatalf("the disposable chat did not reply and become idle (%d inference requests)", requests.Load())
+}
 
 func TestInstalledCopilotProviderStreamingAndTools(t *testing.T) {
 	sdk, cli := os.Getenv("KOBASHI_TEST_COPILOT_SDK"), os.Getenv("KOBASHI_TEST_COPILOT_EXE")
@@ -126,9 +367,11 @@ func TestInstalledCopilotProviderStreamingAndTools(t *testing.T) {
 import {pathToFileURL} from "node:url";
 import {join} from "node:path";
 const {CopilotClient} = await import(pathToFileURL(join(process.env.KOBASHI_TEST_COPILOT_SDK, "index.js")));
+const wrapper = process.env.KOBASHI_TEST_COPILOT_WRAPPER;
+const args = ["--no-auto-update", "--disable-builtin-mcps", "--no-custom-instructions", "--no-remote-export"];
 const client = new CopilotClient({
-  connection: {kind: "stdio", path: process.env.KOBASHI_TEST_COPILOT_EXE,
-    args: ["--no-auto-update", "--disable-builtin-mcps", "--no-custom-instructions", "--no-remote-export"]},
+  connection: {kind: "stdio", path: wrapper || process.env.KOBASHI_TEST_COPILOT_EXE,
+    args: wrapper ? ["copilot", "--copilot-path", process.env.KOBASHI_TEST_COPILOT_EXE, ...args] : args},
   mode: "empty", baseDirectory: process.env.COPILOT_HOME, workingDirectory: process.cwd(),
   useLoggedInUser: false, logLevel: "error"
 });
@@ -145,6 +388,15 @@ try {
       handler: async (args) => {toolCalls++; return {value: args.value};}}],
     onPermissionRequest: async () => ({kind: "approved"})
   });
+  let timer;
+  try {
+    await Promise.race([
+      session.rpc.mode.get(),
+      new Promise((_, reject) => {timer = setTimeout(() => reject(new Error("Session activity RPC did not respond")), 5000);})
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
   const result = await session.sendAndWait({prompt: "Call echo_probe with echo-value."}, 30000);
   if (toolCalls !== 1 || !result?.data.content.includes("KOBASHI_OK")) {
     throw new Error("Runtime did not complete the streaming tool-call roundtrip (" + toolCalls + " tool calls): " + JSON.stringify(result));

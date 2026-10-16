@@ -3,6 +3,7 @@
 package desktop
 
 import (
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -16,6 +17,24 @@ import (
 	"testing"
 	"unsafe"
 )
+
+func TestBridgeStatusText(t *testing.T) {
+	for _, id := range []int{idClaude, idCodex, idCopilot} {
+		for _, pending := range []bool{false, true} {
+			for _, on := range []bool{false, true} {
+				want := "Paused"
+				if pending {
+					want = "Working..."
+				} else if on {
+					want = "Active"
+				}
+				if got := bridgeStatusText(id, on, pending); got != want {
+					t.Errorf("bridgeStatusText(%d, %t, %t) = %q, want %q", id, on, pending, got, want)
+				}
+			}
+		}
+	}
+}
 
 func captureClient(t *testing.T, hwnd uintptr, width, height int) *image.NRGBA {
 	t.Helper()
@@ -92,11 +111,110 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, c := range w.controls {
+		if c.id == 1 && c.title != "Kobashi2" {
+			t.Fatal("native branding must use Kobashi2", c.id, c.title)
+		}
+	}
+	t.Run("appearance choices and automatic mode", func(t *testing.T) {
+		if w.control(idTheme) != 0 || w.control(10) != 0 || w.control(11) != 0 {
+			t.Fatal("header theme control or removed descriptions are still present")
+		}
+		selector := w.control(idAppearance)
+		if proc("SendMessageW", selector, 0x146, 0, 0) != 3 ||
+			proc("GetWindowLongW", selector, ^uintptr(15))&0x10003 != 0x10003 {
+			t.Fatal("Appearance must be a keyboard-accessible native dropdown list")
+		}
+		for index, title := range []string{"Auto", "Light", "Dark"} {
+			buffer := make([]uint16, 32)
+			proc("SendMessageW", selector, 0x148, uintptr(index), uintptr(unsafe.Pointer(&buffer[0])))
+			if syscall.UTF16ToString(buffer) != title {
+				t.Fatal("unexpected appearance choice", index, syscall.UTF16ToString(buffer))
+			}
+		}
+		originalView, originalAppearance := w.view, w.status["appearance"]
+		defer func() { w.view, w.status["appearance"] = originalView, originalAppearance; w.render() }()
+		w.view = "settings"
+		w.status["appearance"] = "system"
+		w.render()
+		if proc("SendMessageW", selector, 0x147, 0, 0) != 0 ||
+			w.palette != themePalette(systemDark() && !w.highContrast, w.highContrast) {
+			t.Fatal("Auto must show the system theme without an override")
+		}
+		w.view = "idle"
+		w.render()
+		if proc("IsWindowVisible", selector) != 0 || proc("IsWindowVisible", w.control(idAppearanceLabel)) != 0 {
+			t.Fatal("Appearance must only appear in Settings")
+		}
+	})
+	t.Run("startup and polling recovery", func(t *testing.T) {
+		originalStatus, originalSettings, originalView := w.status, w.settings, w.view
+		defer func() {
+			w.status, w.settings, w.view = originalStatus, originalSettings, originalView
+			w.notice, w.refreshError = "", ""
+			w.render()
+		}()
+		label := func(id int) string {
+			buffer := make([]uint16, 256)
+			proc("GetWindowTextW", w.control(id), uintptr(unsafe.Pointer(&buffer[0])), uintptr(len(buffer)))
+			return strings.ReplaceAll(syscall.UTF16ToString(buffer), "&", "")
+		}
+		w.view = "starting"
+		w.accept(event{path: "refresh", value: map[string]any{"ready": false, "connected": false}})
+		if w.view != "starting" || label(idConnect) != "Starting..." ||
+			proc("IsWindowEnabled", w.control(idConnect)) != 0 ||
+			proc("GetWindowLongW", w.control(idTokenView), ^uintptr(15))&0x10000000 != 0 {
+			t.Fatal("loading offers sign-in before saved login has loaded")
+		}
+		w.post("/api/start", map[string]any{})
+		if w.busy {
+			t.Fatal("sign-in raced startup")
+		}
+		connected := map[string]any{"ready": true, "connected": true, "copilotEnabled": false}
+		w.accept(event{path: "refresh", value: connected})
+		if w.view != "connected" {
+			t.Fatal("restored login did not open the connected screen")
+		}
+		w.accept(event{path: "refresh", err: errors.New("Local bridge unavailable.")})
+		if w.notice != "" || w.refreshError != "Local bridge unavailable." || label(12) != w.refreshError {
+			t.Fatal("polling error was lost or stored as an action failure")
+		}
+		w.accept(event{path: "refresh", value: connected})
+		if w.refreshError != "" || label(12) != "" {
+			t.Fatal("recovered polling left a stale connection error")
+		}
+		w.notice = "Could not enable bridge."
+		w.accept(event{path: "refresh", value: connected})
+		if w.notice != "Could not enable bridge." || label(12) != w.notice {
+			t.Fatal("successful polling cleared a user action error")
+		}
+		w.notice = ""
+		w.accept(event{path: "refresh", value: map[string]any{"ready": true, "connected": false}})
+		if w.view != "idle" || label(idConnect) != "Not Connected" || proc("IsWindowEnabled", w.control(idConnect)) == 0 {
+			t.Fatal("a genuinely signed-out account cannot sign in after startup")
+		}
+		w.status["ready"] = false
+		w.view = "settings"
+		w.command(idDone)
+		if w.view != "starting" {
+			t.Fatal("Done offered sign-in before initialization completed")
+		}
+	})
+	for id, want := range map[int]string{idClaude: "Claude", idCodex: "Codex", idCopilot: "Copilot"} {
+		for _, c := range w.controls {
+			if c.id == id && strings.ReplaceAll(c.title, "&", "") != want {
+				t.Fatal("client label should omit Bridge", id, c.title)
+			}
+		}
+	}
+	for _, c := range w.controls {
 		if c.view == "client" || c.view == "server" || c.view == "network" {
 			t.Fatal("disabled network control was created", c.id, c.title)
 		}
 		if strings.ReplaceAll(c.title, "&", "") == "Copy Copilot setup" {
 			t.Fatal("Copilot setup copy action is still present")
+		}
+		if strings.ReplaceAll(c.title, "&", "") == "Quit Kobashi2" {
+			t.Fatal("Settings quit link is still present")
 		}
 	}
 	w.fixedSize(0, 0)
@@ -147,6 +265,21 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 		pixel := func(rgb uint32) color.NRGBA {
 			return color.NRGBA{R: byte(rgb >> 16), G: byte(rgb >> 8), B: byte(rgb), A: 255}
 		}
+		for i := range w.controls {
+			if w.controls[i].id != id {
+				continue
+			}
+			w.controls[i].hover = true
+			hover := captureClient(t, h, width, height)
+			w.controls[i].hover = false
+			want := w.palette.button
+			if id == idDisconnect {
+				want = w.palette.panel
+			}
+			if hover.NRGBAAt(10*w.dpi/96, 10*w.dpi/96) != pixel(want) {
+				t.Fatal("connection hover must preserve the contrast-safe background and semantic text color", id, w.dpi)
+			}
+		}
 		colored := 0
 		for y := 3; y < height-3; y++ {
 			for x := 3; x < width-3; x++ {
@@ -193,39 +326,55 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 			}
 		}
 	}
-	assertConnectedLayout := func(offset int) {
+	assertConnectedLayout := func() {
 		t.Helper()
 		var client rect
 		proc("GetClientRect", w.Handle, uintptr(unsafe.Pointer(&client)))
-		if client.Right != int32(400*w.dpi/96) || client.Bottom != int32((400-offset)*w.dpi/96) {
-			t.Fatalf("connected/%d DPI has unused space or clipped content: %v", w.dpi, client)
+		if client.Right != int32(windowWidth*w.dpi/96) || client.Bottom != int32(windowHeight*w.dpi/96) {
+			t.Fatalf("connected/%d DPI does not share the fixed Settings size: %v", w.dpi, client)
 		}
-		for id, y := range map[int]int{7: 119, 8: 160, idDisconnect: 119, idClaude: 216, idCodex: 260,
-			idCopilot: 304, idProject: 368} {
+		for id, y := range map[int]int{7: 87, 8: 128, idDisconnect: 87, idClaude: 184, idCodex: 228,
+			idCopilot: 272, idProject: 338} {
 			var bounds rect
 			proc("GetWindowRect", w.control(id), uintptr(unsafe.Pointer(&bounds)))
 			proc("MapWindowPoints", 0, w.Handle, uintptr(unsafe.Pointer(&bounds)), 2)
-			if bounds.Top != int32((y-offset)*w.dpi/96) {
+			if bounds.Top != int32(y*w.dpi/96) {
 				t.Fatalf("connected/%d DPI misaligns control %d: %v", w.dpi, id, bounds)
 			}
 		}
 		noticeVisible := proc("GetWindowLongW", w.control(12), ^uintptr(15))&0x10000000 != 0
-		if noticeVisible != (offset == 0) {
+		if noticeVisible != (w.notice != "" || text(w.status["error"]) != "") {
 			t.Fatal("the connected homepage reserves space for an empty notice or hides an active notice")
+		}
+		titleVisible := proc("GetWindowLongW", w.control(1), ^uintptr(15))&0x10000000 != 0
+		if titleVisible == noticeVisible {
+			t.Fatal("connected errors must replace the header title without reserving vertical space")
+		}
+		var noticeBounds rect
+		proc("GetWindowRect", w.control(12), uintptr(unsafe.Pointer(&noticeBounds)))
+		proc("MapWindowPoints", 0, w.Handle, uintptr(unsafe.Pointer(&noticeBounds)), 2)
+		if noticeBounds != (rect{int32(32 * w.dpi / 96), int32(24 * w.dpi / 96),
+			int32(280 * w.dpi / 96), int32(56 * w.dpi / 96)}) {
+			t.Fatal("connected error must fit beside header actions", noticeBounds)
 		}
 		screenshot := captureClient(t, w.Handle, int(client.Right), int(client.Bottom))
 		pixel := func(x, y int) color.NRGBA {
-			return screenshot.NRGBAAt(x*w.dpi/96, (y-offset)*w.dpi/96)
+			return screenshot.NRGBAAt(x*w.dpi/96, y*w.dpi/96)
 		}
 		rgb := func(value uint32) color.NRGBA {
 			return color.NRGBA{R: byte(value >> 16), G: byte(value >> 8), B: byte(value), A: 255}
 		}
-		for y := 194; y < 210; y++ {
-			if pixel(200, y) != rgb(w.palette.background) {
-				t.Fatalf("connected/%d DPI does not preserve the 16-point gap between panels", w.dpi)
+		if footerY-322 != 16 {
+			t.Fatal("client panel must have equal header, account and footer gaps")
+		}
+		for _, start := range []int{56, 162, 322} {
+			for y := start; y < start+16; y++ {
+				if pixel(200, y) != rgb(w.palette.background) {
+					t.Fatalf("connected/%d DPI does not preserve the 16-point gap at %d", w.dpi, start)
+				}
 			}
 		}
-		for _, y := range []int{238, 260, 282, 304, 326} {
+		for _, y := range []int{206, 228, 250, 272, 294} {
 			if pixel(32, y) != rgb(w.palette.border) || pixel(40, y) != rgb(w.palette.panel) ||
 				pixel(200, y) != rgb(w.palette.panel) {
 				t.Fatalf("connected/%d DPI does not render one continuous Bridge panel at row %d", w.dpi, y)
@@ -248,14 +397,28 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 			}
 			if view == "connected" {
 				assertStatus(idDisconnect, "Connected", w.palette.connected)
-				assertConnectedLayout(32)
+				assertConnectedLayout()
 				for _, enabled := range []bool{true, false} {
 					for _, key := range []string{"claudeEnabled", "codexEnabled", "copilotEnabled"} {
 						w.status[key] = enabled
 					}
 					w.render()
+					dot := w.palette.disconnected
+					if enabled {
+						dot = w.palette.connected
+					}
+					want := color.NRGBA{R: byte(dot >> 16), G: byte(dot >> 8), B: byte(dot), A: 255}
+					for _, id := range []int{idClaude, idCodex, idCopilot} {
+						image := captureClient(t, w.control(id), 320, 44)
+						if got := image.NRGBAAt(62, 33); got != want {
+							t.Fatal("status dot does not use its semantic color", theme, id, enabled, got, want)
+						}
+					}
 					reference := captureClient(t, w.control(idClaude), 320, 44)
 					for _, id := range []int{idCodex, idCopilot} {
+						if id == idCopilot && !enabled {
+							continue
+						}
 						status := captureClient(t, w.control(id), 320, 44)
 						for y := 24; y < 44; y++ {
 							for x := 58; x < 254; x++ {
@@ -286,6 +449,15 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 			if background != (color.NRGBA{R: byte(want.background >> 16), G: byte(want.background >> 8), B: byte(want.background), A: 255}) {
 				t.Fatalf("%s/%s has an incorrect plain background: %v", theme, view, background)
 			}
+			accent := color.NRGBA{R: byte(want.accent >> 16), G: byte(want.accent >> 8), B: byte(want.accent), A: 255}
+			for _, x := range []int{38, 44, 50} {
+				if screenshot.NRGBAAt(x, 38) != accent {
+					t.Fatal("header must render two filled circles joined by a line", theme, view, x)
+				}
+			}
+			if screenshot.NRGBAAt(44, 35) != background || screenshot.NRGBAAt(48, 29) != background {
+				t.Fatal("header still renders a chevron instead of the connection mark", theme, view)
+			}
 			if dir := os.Getenv("KOBASHI_UI_CAPTURE_DIR"); dir != "" {
 				if err := os.MkdirAll(dir, 0700); err != nil {
 					t.Fatal(err)
@@ -304,12 +476,13 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 		}
 	}
 	for id, want := range map[int]rect{
-		idSettings: {296, 24, 328, 56}, idTheme: {336, 24, 368, 56},
-		idClaude: {40, 216, 360, 260}, idCodex: {40, 260, 360, 304},
-		idCopilot:    {40, 304, 360, 348},
-		idDisconnect: {255, 119, 349, 147},
-		idStartup:    {32, 114, 368, 194}, idTray: {32, 206, 368, 286},
-		idDone: {32, 328, 368, 360}, idQuit: {32, 368, 144, 392},
+		idSettings: {336, 24, 368, 56},
+		idClaude:   {40, 184, 360, 228}, idCodex: {40, 228, 360, 272},
+		idCopilot:    {40, 272, 360, 316},
+		idDisconnect: {255, 87, 349, 115},
+		idStartup:    {32, 114, 368, 144}, idTray: {32, 162, 368, 192},
+		idAppearanceLabel: {40, 214, 172, 238},
+		idDone:            {32, 290, 368, 322}, idProject: {252, 338, 368, 362},
 	} {
 		var got rect
 		proc("GetWindowRect", w.control(id), uintptr(unsafe.Pointer(&got)))
@@ -376,6 +549,19 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 				}
 			}
 			gdi.NewProc("SelectObject").Call(dc, old)
+			old, _, _ = gdi.NewProc("SelectObject").Call(dc, w.font)
+			for _, on := range []bool{false, true} {
+				text := bridgeStatusText(idCopilot, on, false)
+				var extent point
+				if result, _, _ := gdi.NewProc("GetTextExtentPoint32W").Call(dc, uintptr(unsafe.Pointer(wide(text))),
+					uintptr(len(syscall.StringToUTF16(text))-1), uintptr(unsafe.Pointer(&extent))); result == 0 {
+					t.Fatal("could not measure Copilot status text", text)
+				}
+				if int(extent.X) > 180*dpi/96 || int(extent.Y) > 24*dpi/96 {
+					t.Errorf("%s/%d DPI clips Copilot status %q: text %dx%d", theme, dpi, text, extent.X, extent.Y)
+				}
+			}
+			gdi.NewProc("SelectObject").Call(dc, old)
 			proc("ReleaseDC", w.Handle, dc)
 			if hint.x+hint.w+6 > link.x || hint.y != link.y || hint.h != link.h {
 				t.Errorf("%s/%d DPI overlaps or misaligns the token hint and link", theme, dpi)
@@ -398,30 +584,104 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 			w.view = "connected"
 			w.render()
 			assertStatus(idDisconnect, "Connected", w.palette.connected)
-			assertConnectedLayout(32)
-			for _, source := range []string{"notice", "error"} {
+			assertConnectedLayout()
+			for _, id := range []int{idCodex, idClaude, idCopilot} {
+				w.busy, w.pendingBridge = true, id
+				w.render()
+				assertConnectedLayout()
+				if got := bridgeStatusText(id, false, w.pendingBridge == id); got != "Working..." {
+					t.Fatal("pending Bridge status is missing", id, got)
+				}
+				w.accept(event{path: "/api/toggle-copilot", value: map[string]any{
+					"codexEnabled": false, "claudeEnabled": true, "copilotEnabled": true,
+					"notice": "Kobashi provider registered and selected for the current local session.",
+				}})
+				assertConnectedLayout()
+				if w.notice != "" || w.busy || w.pendingBridge != 0 {
+					t.Fatal("successful toggle leaves progress or provider explanation behind")
+				}
+			}
+			for _, source := range []string{"notice", "copilot-ready", "copilot-pending", "error"} {
 				if source == "notice" {
-					w.notice = "Settings saved."
+					w.notice = "Could not save settings."
+				} else if source == "copilot-ready" {
+					w.accept(event{path: "/api/toggle-copilot", value: map[string]any{
+						"codexEnabled": false, "claudeEnabled": true, "copilotEnabled": true,
+						"notice": "Kobashi provider registered and selected for the current local session.",
+					}})
+				} else if source == "copilot-pending" {
+					w.accept(event{path: "/api/toggle-copilot", value: map[string]any{
+						"codexEnabled": false, "claudeEnabled": true, "copilotEnabled": true,
+						"notice": "Kobashi registered; no session was switched. Select its model when idle.",
+					}})
 				} else {
 					w.status["error"] = "GitHub needs authorization."
 				}
 				w.render()
-				assertConnectedLayout(0)
+				if strings.HasPrefix(source, "copilot-") {
+					assertConnectedLayout()
+					if w.notice != "" {
+						t.Fatal("successful provider registration must be silent")
+					}
+				} else {
+					assertConnectedLayout()
+				}
 				w.notice = ""
 				delete(w.status, "error")
 				w.render()
-				assertConnectedLayout(32)
+				assertConnectedLayout()
 			}
 			w.status["usage"] = nil
 			w.render()
-			assertConnectedLayout(32)
+			assertConnectedLayout()
 			w.status["usage"] = map[string]any{"creditsUsed": float64(12), "entitlement": float64(100)}
+			mainFrame := w.windowBounds(w.Handle)
 			w.view = "settings"
 			w.render()
+			if w.windowBounds(w.Handle) != mainFrame {
+				t.Fatal("switching to Settings resizes or moves the window", theme, dpi)
+			}
+			proc("GetClientRect", w.Handle, uintptr(unsafe.Pointer(&client)))
+			if int(client.Right) != windowWidth*dpi/96 || int(client.Bottom) != windowHeight*dpi/96 {
+				t.Fatalf("%s/%d DPI changed the Settings window size: %v", theme, dpi, client)
+			}
+			settingsImage := captureClient(t, w.Handle, int(client.Right), int(client.Bottom))
+			if w.control(10) != 0 || w.control(11) != 0 || w.control(idTheme) != 0 {
+				t.Fatal("Settings descriptions or header theme toggle are still present")
+			}
+			if proc("SendMessageW", w.control(idAppearance), 0x147, 0, 0) != map[string]uintptr{"light": 1, "dark": 2}[theme] {
+				t.Fatal("Appearance selector does not reflect the saved mode", theme, dpi)
+			}
+			var appearanceBounds rect
+			proc("GetWindowRect", w.control(idAppearance), uintptr(unsafe.Pointer(&appearanceBounds)))
+			proc("MapWindowPoints", 0, w.Handle, uintptr(unsafe.Pointer(&appearanceBounds)), 2)
+			if appearanceBounds.Left < int32(188*dpi/96) || appearanceBounds.Right > int32(368*dpi/96) ||
+				appearanceBounds.Top < int32(206*dpi/96) || appearanceBounds.Bottom > int32(274*dpi/96) {
+				t.Fatal("native Appearance selector overlaps other Settings controls", theme, dpi, appearanceBounds)
+			}
+			background := color.NRGBA{R: byte(w.palette.background >> 16), G: byte(w.palette.background >> 8),
+				B: byte(w.palette.background), A: 255}
+			for y := 114; y < 286; y++ {
+				if settingsImage.NRGBAAt(32*dpi/96, y*dpi/96) != background {
+					t.Fatalf("%s/%d DPI still draws a Settings panel border", theme, dpi)
+				}
+			}
 			dc = proc("GetDC", w.Handle)
-			old, _, _ = gdi.NewProc("SelectObject").Call(dc, w.small)
+			old, _, _ = gdi.NewProc("SelectObject").Call(dc, w.font)
 			for _, c := range w.controls {
-				if c.id != 10 && c.id != 11 {
+				if c.id == idStartup || c.id == idTray || c.id == idAppearanceLabel {
+					image := captureClient(t, c.handle, c.w*dpi/96, c.h*dpi/96)
+					if image.NRGBAAt(image.Bounds().Max.X-1, image.Bounds().Max.Y-1) != background {
+						t.Fatal("Settings controls do not share the window background", c.id, theme, dpi)
+					}
+					if (c.id == idStartup || c.id == idTray) && proc("SendMessageW", c.handle, 0xf0, 0, 0) == 1 {
+						on := color.NRGBA{R: byte(w.palette.on >> 16), G: byte(w.palette.on >> 8), B: byte(w.palette.on), A: 255}
+						if image.NRGBAAt(312*dpi/96, 10*dpi/96) != on {
+							t.Fatal("checked box does not use the contrast-safe purple fill", c.id, theme, dpi)
+						}
+					}
+				}
+				if c.id != idAppearanceLabel {
 					continue
 				}
 				bounds := rect{Right: int32(c.w * dpi / 96), Bottom: int32(c.h * dpi / 96)}
@@ -435,22 +695,29 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 			}
 			gdi.NewProc("SelectObject").Call(dc, old)
 			proc("ReleaseDC", w.Handle, dc)
+			if proc("GetNextDlgTabItem", w.Handle, w.control(idStartup), 0) != w.control(idTray) ||
+				proc("GetNextDlgTabItem", w.Handle, w.control(idTray), 1) != w.control(idStartup) ||
+				proc("GetNextDlgTabItem", w.Handle, w.control(idTray), 0) != w.control(idAppearance) ||
+				proc("GetNextDlgTabItem", w.Handle, w.control(idAppearance), 0) != w.control(idDone) ||
+				proc("GetNextDlgTabItem", w.Handle, w.control(idDone), 1) != w.control(idAppearance) {
+				t.Fatal("Settings focus order must be Start at login, Close to tray, Appearance, Done")
+			}
 			if proc("GetWindowLongW", w.control(idDone), ^uintptr(15))&0x10000 == 0 {
 				t.Fatal("Done lost keyboard focusability")
 			}
-			if proc("GetWindowLongW", w.control(idQuit), ^uintptr(15))&0x10000 == 0 ||
-				proc("GetNextDlgTabItem", w.Handle, w.control(idDone), 0) != w.control(idQuit) {
-				t.Fatal("Quit must remain keyboard reachable after Done")
+			if w.control(idQuit) != 0 ||
+				proc("GetNextDlgTabItem", w.Handle, w.control(idDone), 0) != w.control(idProject) {
+				t.Fatal("Settings must navigate from Done directly to Version without a quit link")
 			}
-			var doneBounds, quitBounds rect
+			var doneBounds, versionBounds rect
 			proc("GetWindowRect", w.control(idDone), uintptr(unsafe.Pointer(&doneBounds)))
-			proc("GetWindowRect", w.control(idQuit), uintptr(unsafe.Pointer(&quitBounds)))
+			proc("GetWindowRect", w.control(idProject), uintptr(unsafe.Pointer(&versionBounds)))
 			proc("MapWindowPoints", 0, w.Handle, uintptr(unsafe.Pointer(&doneBounds)), 2)
-			proc("MapWindowPoints", 0, w.Handle, uintptr(unsafe.Pointer(&quitBounds)), 2)
-			if int(quitBounds.Top-doneBounds.Bottom) < 8*dpi/96-1 ||
-				int(quitBounds.Bottom) > (windowHeight-8)*dpi/96 ||
-				int(quitBounds.Bottom-quitBounds.Top) < 24*dpi/96 {
-				t.Errorf("%s/%d DPI overlaps or clips the Quit link", theme, dpi)
+			proc("MapWindowPoints", 0, w.Handle, uintptr(unsafe.Pointer(&versionBounds)), 2)
+			if math.Abs(float64(int(versionBounds.Top-doneBounds.Bottom)-16*dpi/96)) > 1 ||
+				int(versionBounds.Bottom) > (windowHeight-8)*dpi/96 ||
+				int(versionBounds.Bottom-versionBounds.Top) < 24*dpi/96 {
+				t.Errorf("%s/%d DPI overlaps, clips, or misaligns the version link", theme, dpi)
 			}
 			if dir := os.Getenv("KOBASHI_UI_CAPTURE_DIR"); dir != "" {
 				path := filepath.Join(dir, fmt.Sprintf("%s-settings-%d-dpi.png", theme, dpi))
@@ -483,7 +750,25 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 		if w.view != want || w.notice != "" {
 			t.Fatal("Done did not return to the main view", w.view, w.notice)
 		}
+		frame := w.windowBounds(w.Handle)
+		w.command(idSettings)
+		if w.view != "settings" || proc("IsWindowVisible", w.control(idSettings)) == 0 ||
+			proc("IsWindowEnabled", w.control(idSettings)) == 0 {
+			t.Fatal("Settings icon did not open Settings or remained unavailable")
+		}
+		w.command(idSettings)
+		if w.view != want || w.windowBounds(w.Handle) != frame ||
+			proc("GetWindowLongW", w.control(idDone), ^uintptr(15))&0x10000000 != 0 {
+			t.Fatal("Settings icon did not return to the main screen without changing the window")
+		}
 	}
+	w.status["ready"] = false
+	w.view = "settings"
+	w.command(idSettings)
+	if w.view != "starting" {
+		t.Fatal("closing Settings through its icon bypassed startup readiness")
+	}
+	delete(w.status, "ready")
 	w.view = "connected"
 	w.status["username"] = "xjin6"
 	w.render()
@@ -496,8 +781,8 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 	}
 	w.view = "settings"
 	w.render()
-	if proc("GetNextDlgTabItem", w.Handle, w.control(idQuit), 0) != w.control(idProject) ||
-		proc("GetNextDlgTabItem", w.Handle, w.control(idProject), 1) != w.control(idQuit) {
+	if proc("GetNextDlgTabItem", w.Handle, w.control(idDone), 0) != w.control(idProject) ||
+		proc("GetNextDlgTabItem", w.Handle, w.control(idProject), 1) != w.control(idDone) {
 		t.Fatal("version link lost forward or reverse keyboard navigation")
 	}
 }
@@ -549,7 +834,7 @@ func TestNativeUsageHidesUnavailableValuesAndFormatsCredits(t *testing.T) {
 	}
 }
 
-func TestNativeConnectionStatusContrast(t *testing.T) {
+func TestNativeThemeContrast(t *testing.T) {
 	luminance := func(rgb uint32) float64 {
 		channels := [3]float64{}
 		for i, shift := range []uint{16, 8, 0} {
@@ -564,13 +849,37 @@ func TestNativeConnectionStatusContrast(t *testing.T) {
 	}
 	for _, dark := range []bool{false, true} {
 		colors := themePalette(dark, false)
+		for _, rgb := range []uint32{colors.accent, colors.secondary, colors.on} {
+			r, g, b := rgb>>16, rgb>>8&255, rgb&255
+			if b <= r || r <= g {
+				t.Errorf("theme is not purple: dark=%v color=%06x", dark, rgb)
+			}
+		}
+		green, gray, red := uint32(0x15803d), uint32(0x6b7280), uint32(0xdc2626)
+		if dark {
+			green, gray, red = 0x3fb950, 0x9ca3af, 0xf85149
+		}
+		if colors.connected != green || colors.disconnected != gray || colors.danger != red {
+			t.Errorf("theme overrides semantic status colors: dark=%v", dark)
+		}
 		for _, pair := range [][2]uint32{
-			{colors.disconnected, colors.button}, {colors.disconnected, colors.hover},
-			{colors.connected, colors.panel}, {colors.connected, colors.hover},
+			{colors.text, colors.background}, {colors.muted, colors.panel},
+			{colors.accent, colors.badge}, {colors.secondary, colors.background},
+			{colors.disconnected, colors.button}, {colors.connected, colors.panel},
+			{colors.knob, colors.on},
 		} {
 			a, b := luminance(pair[0]), luminance(pair[1])
 			if ratio := (max(a, b) + 0.05) / (min(a, b) + 0.05); ratio < 4.5 {
-				t.Errorf("connection status text contrast is %.2f: dark=%v colors=%x", ratio, dark, pair)
+				t.Errorf("theme text contrast is %.2f: dark=%v colors=%x", ratio, dark, pair)
+			}
+		}
+		for _, pair := range [][2]uint32{
+			{colors.on, colors.panel}, {colors.toggle, colors.panel},
+			{colors.knob, colors.on}, {colors.knob, colors.toggle},
+		} {
+			a, b := luminance(pair[0]), luminance(pair[1])
+			if ratio := (max(a, b) + 0.05) / (min(a, b) + 0.05); ratio < 3 {
+				t.Errorf("theme control contrast is %.2f: dark=%v colors=%x", ratio, dark, pair)
 			}
 		}
 	}

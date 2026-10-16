@@ -37,11 +37,11 @@ func themePalette(dark, high bool) palette {
 		return palette{bg, fg, fg, bg, fg, face, face, bg, accent, accent, fg, bg, accent, system(14), face, bg, fg, fg}
 	}
 	if dark {
-		return palette{0x0a0c10, 0xe6edf3, 0x8b949e, 0x1e2229, 0x272c33, 0x1c2127, 0x2a3038, 0x0c1016,
-			0x58a6ff, 0xa371f7, 0xf85149, 0x21262d, 0x1f6feb, 0xffffff, 0x2f343b, 0x24303e, 0x3fb950, 0x9ca3af}
+		return palette{0x100e17, 0xf0ebfa, 0xa69bb8, 0x1c1827, 0x342c46, 0x241e32, 0x302540, 0x15111e,
+			0xc4a5fd, 0xd8b4fe, 0xf85149, 0x756585, 0x7c3aed, 0xffffff, 0x292234, 0x322447, 0x3fb950, 0x9ca3af}
 	}
-	return palette{0xf0f4f0, 0x1a2e1a, 0x5a6e5a, 0xf0f9f2, 0xd9e8de, 0xffffff, 0xf0fdf4, 0xf0fbf3,
-		0x15803d, 0x0891b2, 0xdc2626, 0xd1d5db, 0x238636, 0xffffff, 0xffffff, 0xdef3e2, 0x15803d, 0x6b7280}
+	return palette{0xf7f4fc, 0x2b1b3d, 0x6f5f80, 0xfdfaff, 0xe2d8ef, 0xffffff, 0xeee7f8, 0xfaf7ff,
+		0x6d28d9, 0x7c3aed, 0xdc2626, 0x9e88b5, 0x6d28d9, 0xffffff, 0xffffff, 0xede4fb, 0x15803d, 0x6b7280}
 }
 
 func (w *Window) loadArtwork() error {
@@ -79,15 +79,8 @@ func credits(value float64) string {
 	return strings.Join(parts, ".")
 }
 
-func (w *Window) connectedOffset() int {
-	if w.view == "connected" && w.notice == "" && text(w.status["error"]) == "" {
-		return 32
-	}
-	return 0
-}
-
 func (w *Window) contentHeight() int {
-	return windowHeight - w.connectedOffset()
+	return windowHeight
 }
 
 func (w *Window) layout() {
@@ -125,19 +118,17 @@ func (w *Window) layout() {
 	for i := range w.controls {
 		c := &w.controls[i]
 		c.y = c.baseY
-		if c.view == "connected" || c.id == idProject {
-			c.y -= w.connectedOffset()
-		}
 		if c.id == idConnect {
 			c.y = 160
 			if w.view == "token" {
 				c.y = 94
 			}
 		} else if c.id == 12 {
+			c.x, c.w = 32, 336
 			c.y, c.h = 252, 70
 			switch w.view {
 			case "connected":
-				c.y, c.h = 64, 30
+				c.y, c.h, c.w = 24, 32, 248
 			case "settings":
 				c.y, c.h = 70, 32
 			// case "client", "server":
@@ -145,7 +136,7 @@ func (w *Window) layout() {
 			case "token":
 				c.y, c.h = 267, 62
 			case "device":
-				c.y, c.h = 308, 48
+				c.y, c.h = 300, 32
 			case "quitting":
 				c.y = 160
 			}
@@ -330,18 +321,17 @@ func (w *Window) paintWindow(dc uintptr) {
 		p.fill(0, 0, windowWidth, w.contentHeight(), c.background)
 		switch w.view {
 		case "connected":
-			offset := w.connectedOffset()
-			p.round(32, 104-offset, 336, 90, 12, c.panel, c.border)
-			p.round(32, 210-offset, 336, 144, 12, c.panel, c.border)
+			p.round(32, 72, 336, 90, 12, c.panel, c.border)
+			p.round(32, 178, 336, 144, 12, c.panel, c.border)
 			if used, total, ok := w.usage(); ok {
-				p.round(50, 178-offset, 299, 5, 3, c.toggle, c.toggle)
+				p.round(50, 146, 299, 5, 3, c.toggle, c.toggle)
 				width := int(math.Min(1, used/total) * 299)
 				if used > 0 {
 					width = max(3, width)
 					saved, _, _ := gdi.NewProc("SaveDC").Call(p.dc)
-					region, _, _ := gdi.NewProc("CreateRoundRectRgn").Call(p.s(50), p.s(178-offset), p.s(50+width), p.s(183-offset), p.s(6), p.s(6))
+					region, _, _ := gdi.NewProc("CreateRoundRectRgn").Call(p.s(50), p.s(146), p.s(50+width), p.s(151), p.s(6), p.s(6))
 					gdi.NewProc("ExtSelectClipRgn").Call(p.dc, region, 1)
-					p.gradient(50, 178-offset, width, 5)
+					p.gradient(50, 146, width, 5)
 					gdi.NewProc("RestoreDC").Call(p.dc, saved)
 					gdi.NewProc("DeleteObject").Call(region)
 				}
@@ -354,9 +344,6 @@ func (w *Window) paintWindow(dc uintptr) {
 				border = c.accent
 			}
 			p.round(60, 163, 280, 40, 10, c.input, border)
-		case "settings":
-			p.round(32, 114, 336, 80, 12, c.panel, c.border)
-			p.round(32, 206, 336, 80, 12, c.panel, c.border)
 		}
 	})
 }
@@ -372,6 +359,16 @@ func (w *Window) buffered(dc uintptr, width, height int, draw func(painter)) {
 	gdi.NewProc("DeleteDC").Call(mem)
 }
 
+func bridgeStatusText(id int, on, pending bool) string {
+	if pending {
+		return "Working..."
+	}
+	if on {
+		return "Active"
+	}
+	return "Paused"
+}
+
 func (w *Window) paintControl(c control, dc uintptr) {
 	w.buffered(dc, c.w, c.h, func(p painter) {
 		colors := w.palette
@@ -382,7 +379,7 @@ func (w *Window) paintControl(c control, dc uintptr) {
 				bg = colors.panel
 			}
 		}
-		if c.id == 10 || c.id == 11 || c.id == idClaude || c.id == idCodex || c.id == idCopilot {
+		if c.id == idClaude || c.id == idCodex || c.id == idCopilot {
 			bg = colors.panel
 		}
 		p.fill(0, 0, c.w, c.h, bg)
@@ -395,12 +392,13 @@ func (w *Window) paintControl(c control, dc uintptr) {
 		}
 		switch c.id {
 		case 1:
-			p.line(8, 14, 20, 5, 3, colors.accent)
-			p.line(8, 14, 20, 23, 3, colors.secondary)
-			p.gradientText(title, 34, 1, 90, 27, w.heading)
+			p.line(10, 14, 22, 14, 3, colors.accent)
+			p.round(6, 10, 8, 8, 4, colors.accent, colors.accent)
+			p.round(18, 10, 8, 8, 4, colors.accent, colors.accent)
+			p.gradientText(title, 34, 1, c.w-34, 27, w.heading)
 		case 3, 4, 10, 11, 12, 21, 22, 24, 25:
 			rgb := colors.muted
-			if c.id == 12 && w.notice != "" && w.notice != "Working..." && w.notice != "Settings saved." && w.notice != "Code copied." && w.view != "quitting" {
+			if c.id == 12 && (w.notice != "" || w.refreshError != "") && w.notice != "Working..." && w.view != "quitting" {
 				rgb = colors.danger
 			}
 			font := w.small
@@ -437,6 +435,8 @@ func (w *Window) paintControl(c control, dc uintptr) {
 			p.text(credits(used)+" / "+credits(total), 170, 0, c.w-170, c.h, w.tiny, fg, 0x826)
 		case 9, 20, 23:
 			p.text(title, 0, 0, c.w, c.h, w.heading, fg, 0x824)
+		case idAppearanceLabel:
+			p.text(title, 0, 0, c.w, c.h, w.font, fg, 0x824)
 		case idClaude, idCodex, idCopilot:
 			p.round(10, 6, 32, 32, 8, colors.tile, colors.border)
 			if c.id == idClaude {
@@ -444,13 +444,13 @@ func (w *Window) paintControl(c control, dc uintptr) {
 			} else if c.id == idCopilot {
 				p.artwork("github", 16, 12, 20, colors.tile, colors.accent, true)
 			} else {
-				p.artwork("codex", 14, 10, 24, colors.tile, 0, false)
+				p.artwork("codex", 14, 10, 24, colors.tile, colors.text, true)
 			}
 			p.text(title, 54, 2, 180, 20, w.small, colors.muted, 0x24)
 			on := proc("SendMessageW", c.handle, 0xf0, 0, 0) == 1
-			word, dot := "Paused", colors.muted
+			word, dot := bridgeStatusText(c.id, on, w.pendingBridge == c.id), colors.disconnected
 			if on {
-				word, dot = "Active", colors.accent
+				dot = colors.connected
 			}
 			p.round(58, 29, 8, 8, 4, dot, dot)
 			p.text(word, 74, 20, 180, 24, w.font, fg, 0x824)
@@ -461,24 +461,21 @@ func (w *Window) paintControl(c control, dc uintptr) {
 			p.round(c.w-55, 10, 44, 24, 12, track, colors.border)
 			p.round(c.w-55+knob, 13, 18, 18, 9, colors.knob, colors.knob)
 		case idStartup, idTray:
-			p.round(0, 0, c.w, c.h, 12, colors.panel, colors.border)
-			p.text(title, 16, 12, 256, 24, w.bold, fg, 0x24)
+			p.text(title, 8, 4, 288, 24, w.bold, fg, 0x24)
 			fill, border := colors.button, colors.muted
 			checked := proc("SendMessageW", c.handle, 0xf0, 0, 0) == 1
 			if checked {
-				fill, border = colors.accent, colors.accent
+				fill, border = colors.on, colors.on
 			}
-			p.round(294, 16, 20, 20, 4, fill, border)
+			p.round(308, 6, 20, 20, 4, fill, border)
 			if checked {
-				p.line(298, 26, 302, 30, 2, colors.knob)
-				p.line(302, 30, 310, 21, 2, colors.knob)
+				p.line(312, 16, 316, 20, 2, colors.knob)
+				p.line(316, 20, 324, 11, 2, colors.knob)
 			}
-		case idTokenView, idBrowser, idProject, idQuit:
+		case idTokenView, idBrowser, idProject:
 			rgb, flags := colors.accent, uintptr(0x825)
 			if c.id == idProject {
 				rgb, flags = colors.muted, 0x826
-			} else if c.id == idQuit {
-				rgb, flags = colors.danger, 0x25
 			}
 			p.text(title, 0, 0, c.w, c.h, w.small, rgb, flags)
 		default:
@@ -487,7 +484,7 @@ func (w *Window) paintControl(c control, dc uintptr) {
 				fill, border = colors.hover, colors.accent
 			}
 			if c.id == idConnect || c.id == idLogin || c.id == idDisconnect {
-				fg = colors.disconnected
+				fill, fg = colors.button, colors.disconnected
 				if c.id == idDisconnect {
 					fill, fg, font = bg, colors.connected, w.small
 				}
@@ -503,7 +500,7 @@ func (w *Window) paintControl(c control, dc uintptr) {
 				font = w.small
 			}
 			radius := min(10, c.h/3)
-			if c.id == idSettings || c.id == idTheme || c.id == idDisconnect || c.id == idDone {
+			if c.id == idSettings || c.id == idDisconnect || c.id == idDone {
 				radius = 8
 			} else if c.id == idCopy {
 				radius = 6
@@ -514,17 +511,6 @@ func (w *Window) paintControl(c control, dc uintptr) {
 			}
 			if c.id == idSettings {
 				p.text("\ue713", 0, 0, c.w, c.h, w.symbolFont, colors.muted, 0x825)
-			} else if c.id == idTheme {
-				p.round(9, 9, 14, 14, 7, colors.muted, colors.muted)
-				if w.dark {
-					p.round(13, 6, 14, 14, 7, fill, fill)
-				} else {
-					p.round(11, 11, 10, 10, 5, fill, fill)
-					for angle := 0; angle < 8; angle++ {
-						a := float64(angle) * math.Pi / 4
-						p.line(16+int(10*math.Cos(a)), 16+int(10*math.Sin(a)), 16+int(12*math.Cos(a)), 16+int(12*math.Sin(a)), 1, colors.muted)
-					}
-				}
 			} else if c.id == idConnect {
 				p.artwork("github", 23, 12, 18, fill, fg, true)
 				p.text(title, 48, 0, c.w-60, c.h, font, fg, 0x24)
@@ -537,7 +523,13 @@ func (w *Window) paintControl(c control, dc uintptr) {
 			}
 		}
 		if c.class == "BUTTON" && proc("GetFocus") == c.handle && proc("SendMessageW", w.Handle, 0x129, 0, 0)&1 == 0 {
-			r := rect{int32(p.s(2)), int32(p.s(2)), int32(p.s(c.w - 2)), int32(p.s(c.h - 2))}
+			x, y, right, bottom := 2, 2, c.w-2, c.h-2
+			if c.id == idStartup || c.id == idTray {
+				x, y, right, bottom = 304, 2, 332, 30
+			} else if c.id == idClaude || c.id == idCodex || c.id == idCopilot {
+				x, y, right, bottom = c.w-59, 6, c.w-7, 38
+			}
+			r := rect{int32(p.s(x)), int32(p.s(y)), int32(p.s(right)), int32(p.s(bottom))}
 			gdi.NewProc("SetTextColor").Call(p.dc, colorRef(colors.accent))
 			gdi.NewProc("SetBkColor").Call(p.dc, colorRef(bg))
 			proc("DrawFocusRect", p.dc, uintptr(unsafe.Pointer(&r)))
@@ -557,11 +549,6 @@ func controlProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 			}
 			if c.class != "EDIT" {
 				switch msg {
-				case 0x20:
-					if c.id == idQuit {
-						proc("SetCursor", proc("LoadCursorW", 0, 32649))
-						return 1
-					}
 				case 0xf:
 					var ps paintStruct
 					dc := proc("BeginPaint", hwnd, uintptr(unsafe.Pointer(&ps)))

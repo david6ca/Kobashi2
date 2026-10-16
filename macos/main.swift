@@ -1,6 +1,8 @@
 import Cocoa
 
 let UI_PORT = 18922
+let windowSize = NSSize(width: 400, height: 390)
+let footerY: CGFloat = 356
 
 struct NativeColors {
     let background, text, muted, panel, border, button, hover, input: NSColor
@@ -16,10 +18,10 @@ struct NativeColors {
     static var current: NativeColors {
         let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let values: [UInt32] = dark
-            ? [0x0a0c10, 0xe6edf3, 0x8b949e, 0x1e2229, 0x272c33, 0x1c2127, 0x2a3038, 0x0c1016,
-               0x58a6ff, 0xa371f7, 0xf85149, 0x21262d, 0x1f6feb, 0x2f343b, 0x24303e]
-            : [0xf0f4f0, 0x1a2e1a, 0x5a6e5a, 0xf0f9f2, 0xd9e8de, 0xffffff, 0xf0fdf4, 0xf0fbf3,
-               0x15803d, 0x0891b2, 0xdc2626, 0xd1d5db, 0x238636, 0xffffff, 0xdef3e2]
+            ? [0x100e17, 0xf0ebfa, 0xa69bb8, 0x1c1827, 0x342c46, 0x241e32, 0x302540, 0x15111e,
+               0xc4a5fd, 0xd8b4fe, 0xf85149, 0x756585, 0x7c3aed, 0x292234, 0x322447]
+            : [0xf7f4fc, 0x2b1b3d, 0x6f5f80, 0xfdfaff, 0xe2d8ef, 0xffffff, 0xeee7f8, 0xfaf7ff,
+               0x6d28d9, 0x7c3aed, 0xdc2626, 0x9e88b5, 0x6d28d9, 0xffffff, 0xede4fb]
         let c = values.map(rgb)
         let high = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
         return NativeColors(background: c[0], text: c[1], muted: high ? c[1] : c[2], panel: c[3],
@@ -81,43 +83,43 @@ final class FlippedView: NSView {
         let c = NativeColors.current
         c.background.setFill()
         bounds.fill()
-        let mark = NSBezierPath()
-        mark.move(to: NSPoint(x: 48, y: 29))
-        mark.line(to: NSPoint(x: 36, y: 38))
-        mark.line(to: NSPoint(x: 48, y: 47))
-        mark.lineWidth = 3.3
-        mark.lineCapStyle = .round
-        mark.lineJoinStyle = .round
-        c.accent.setStroke()
-        mark.stroke()
+        if owner?.hasHeaderNotice != true {
+            let mark = NSBezierPath()
+            mark.move(to: NSPoint(x: 38, y: 38))
+            mark.line(to: NSPoint(x: 50, y: 38))
+            mark.lineWidth = 3
+            mark.lineCapStyle = .round
+            c.accent.setStroke()
+            mark.stroke()
+            c.accent.setFill()
+            for x: CGFloat in [34, 46] {
+                NSBezierPath(ovalIn: NSRect(x: x, y: 34, width: 8, height: 8)).fill()
+            }
+        }
         guard let owner else { return }
         switch owner.currentView {
         case "connected":
-            let offset = owner.connectedOffset
-            rounded(NSRect(x: 32, y: 145 - offset, width: 336, height: 90), radius: 12, fill: c.panel, border: c.border)
-            rounded(NSRect(x: 32, y: 251 - offset, width: 336, height: 162), radius: 12, fill: c.panel, border: c.border)
+            rounded(NSRect(x: 32, y: 72, width: 336, height: 90), radius: 12, fill: c.panel, border: c.border)
+            rounded(NSRect(x: 32, y: 178, width: 336, height: 162), radius: 12, fill: c.panel, border: c.border)
             let account = owner.status["username"] as? String ?? ""
             let width = min(175, ("@\(account)" as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13)]).width + 38)
-            rounded(NSRect(x: 50, y: 160 - offset, width: width, height: 27), radius: 13, fill: c.badge, border: c.border)
+            rounded(NSRect(x: 50, y: 87, width: width, height: 27), radius: 13, fill: c.badge, border: c.border)
             // if owner.status["authMethod"] as? String != "remote" {
-            owner.drawArtwork("github", in: NSRect(x: 55, y: 165 - offset, width: 16, height: 16), tint: c.accent)
+            owner.drawArtwork("github", in: NSRect(x: 55, y: 92, width: 16, height: 16), tint: c.accent)
             // }
             if let (used, total) = owner.usageValues {
-                rounded(NSRect(x: 50, y: 219 - offset, width: 299, height: 5), radius: 3, fill: c.track, border: c.track)
+                rounded(NSRect(x: 50, y: 146, width: 299, height: 5), radius: 3, fill: c.track, border: c.track)
                 if used > 0 {
-                    let track = NSBezierPath(roundedRect: NSRect(x: 50, y: 219 - offset, width: max(3, min(1, used / total) * 299), height: 5),
+                    let track = NSBezierPath(roundedRect: NSRect(x: 50, y: 146, width: max(3, min(1, used / total) * 299), height: 5),
                                              xRadius: 3, yRadius: 3)
                     NSGradient(starting: c.accent, ending: c.secondary)!.draw(in: track, angle: 0)
                 }
             }
         case "device":
-            rounded(NSRect(x: 32, y: 182, width: 336, height: 170), radius: 12, fill: c.input, border: c.border)
+            rounded(NSRect(x: 32, y: 126, width: 336, height: 170), radius: 12, fill: c.input, border: c.border)
         case "token":
             let focus = (owner.controls["token"] as? NSTextField)?.currentEditor() != nil
-            rounded(NSRect(x: 60, y: 265, width: 280, height: 40), radius: 10, fill: c.input, border: focus ? c.accent : c.border)
-        case "settings":
-            rounded(NSRect(x: 32, y: 118, width: 336, height: 88), radius: 12, fill: c.panel, border: c.border)
-            rounded(NSRect(x: 32, y: 218, width: 336, height: 88), radius: 12, fill: c.panel, border: c.border)
+            rounded(NSRect(x: 60, y: 209, width: 280, height: 40), radius: 10, fill: c.input, border: focus ? c.accent : c.border)
         default: break
         }
     }
@@ -130,15 +132,40 @@ final class NativeCheckboxCell: NSButtonCell {
     }
 }
 
+final class AppearanceSelector: NSPopUpButton {
+    override var acceptsFirstResponder: Bool { isEnabled }
+    override var canBecomeKeyView: Bool { isEnabled && !isHiddenOrHasHiddenAncestor }
+}
+
 final class NativeButton: NSButton {
     weak var owner: AppDelegate?
     var key = ""
     var hover = false
+    var showsKeyboardFocus = false
     var hoverArea: NSTrackingArea?
+    var bridgeStatusText: String {
+        owner?.pendingBridge == key ? "Working..." : state == .on ? "Active" : "Paused"
+    }
+    var bridgeStatusFont: NSFont {
+        .systemFont(ofSize: 13, weight: .medium)
+    }
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { isEnabled }
-    override func becomeFirstResponder() -> Bool { needsDisplay = true; return super.becomeFirstResponder() }
+    override var canBecomeKeyView: Bool { isEnabled && !isHiddenOrHasHiddenAncestor }
+    override func becomeFirstResponder() -> Bool {
+        if window?.keyViewSelectionDirection == .selectingNext ||
+            window?.keyViewSelectionDirection == .selectingPrevious {
+            showsKeyboardFocus = true
+        }
+        needsDisplay = true
+        return super.becomeFirstResponder()
+    }
     override func resignFirstResponder() -> Bool { needsDisplay = true; return super.resignFirstResponder() }
+    override func mouseDown(with event: NSEvent) {
+        showsKeyboardFocus = false
+        needsDisplay = true
+        super.mouseDown(with: event)
+    }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let hoverArea { removeTrackingArea(hoverArea) }
@@ -148,10 +175,6 @@ final class NativeButton: NSButton {
     }
     override func mouseEntered(with event: NSEvent) { hover = true; needsDisplay = true }
     override func mouseExited(with event: NSEvent) { hover = false; needsDisplay = true }
-    override func resetCursorRects() {
-        super.resetCursorRects()
-        if key == "quit" { addCursorRect(bounds, cursor: .pointingHand) }
-    }
     override func draw(_ dirtyRect: NSRect) {
         let c = NativeColors.current
         let fg = isEnabled ? c.text : c.muted
@@ -163,48 +186,48 @@ final class NativeButton: NSButton {
             rounded(NSRect(x: 10, y: 9, width: 32, height: 32), radius: 8, fill: c.tile, border: c.border)
             let iconSize: CGFloat = key == "claude" ? 20 : 24
             owner?.drawArtwork(key == "copilot" ? "github" : key, in: NSRect(x: 26 - iconSize / 2, y: 25 - iconSize / 2, width: iconSize, height: iconSize),
-                               tint: key == "claude" ? NativeColors.rgb(0xd97757) : key == "copilot" ? c.accent : nil)
+                               tint: key == "claude" ? NativeColors.rgb(0xd97757) : key == "copilot" ? c.accent : c.text)
             nativeText(title, in: NSRect(x: 54, y: 5, width: 180, height: 18), font: .systemFont(ofSize: 12), color: c.muted)
             let on = state == .on
-            let detail = on ? "Active" : "Paused"
-            rounded(NSRect(x: 58, y: 33, width: 8, height: 8), radius: 4, fill: on ? c.accent : c.muted, border: on ? c.accent : c.muted)
-            nativeText(detail, in: NSRect(x: 74, y: 27, width: 180, height: 20),
-                       font: .systemFont(ofSize: 13, weight: .medium), color: fg)
+            let statusColor = on ? c.connected : c.disconnected
+            rounded(NSRect(x: 58, y: 33, width: 8, height: 8), radius: 4, fill: statusColor, border: statusColor)
+            nativeText(bridgeStatusText, in: NSRect(x: 74, y: 27, width: 180, height: 20),
+                       font: bridgeStatusFont, color: fg)
             let trackX = bounds.width - 55
             rounded(NSRect(x: trackX, y: 13, width: 44, height: 24), radius: 12, fill: on ? c.on : c.track, border: c.border)
             rounded(NSRect(x: trackX + (on ? 22 : 2), y: 16, width: 18, height: 18), radius: 9, fill: .white, border: .white)
         case "startup", "tray":
-            rounded(bounds, radius: 12, fill: c.panel, border: c.border)
-            nativeText(title, in: NSRect(x: 16, y: 14, width: 256, height: 24), font: font, color: fg)
-            rounded(NSRect(x: 294, y: 16, width: 20, height: 20), radius: 4,
-                    fill: state == .on ? c.accent : c.button, border: state == .on ? c.accent : c.muted)
+            c.background.setFill()
+            bounds.fill()
+            nativeText(title, in: NSRect(x: 8, y: 4, width: 288, height: 24), font: font, color: fg)
+            rounded(NSRect(x: 308, y: 6, width: 20, height: 20), radius: 4,
+                    fill: state == .on ? c.on : c.button, border: state == .on ? c.on : c.muted)
             if state == .on {
                 let tick = NSBezierPath()
-                tick.move(to: NSPoint(x: 298, y: 26))
-                tick.line(to: NSPoint(x: 302, y: 30))
-                tick.line(to: NSPoint(x: 310, y: 21))
+                tick.move(to: NSPoint(x: 312, y: 16))
+                tick.line(to: NSPoint(x: 316, y: 20))
+                tick.line(to: NSPoint(x: 324, y: 11))
                 tick.lineWidth = 2
                 NSColor.white.setStroke()
                 tick.stroke()
             }
-        case "tokenView", "browser", "project", "quit":
+        case "tokenView", "browser", "project":
             nativeText(title, in: NSRect(x: 0, y: 4, width: bounds.width, height: bounds.height - 4),
                        font: .systemFont(ofSize: key == "project" ? 10 : 12),
-                       color: key == "project" ? c.muted : key == "quit" ? c.danger : c.accent,
+                       color: key == "project" ? c.muted : c.accent,
                        alignment: key == "project" ? .right : .center)
         default:
             let connection = ["connect", "login", "disconnect"].contains(key)
             let primary = key == "done"
             let statusColor = key == "disconnect" ? c.connected : c.disconnected
             let textColor = connection ? statusColor : fg
-            let fill = primary ? c.on : hover || isHighlighted ? c.hover : key == "disconnect" ? c.panel : c.button
+            let fill = primary ? c.on : key == "disconnect" ? c.panel :
+                connection ? c.button : hover || isHighlighted ? c.hover : c.button
             rounded(bounds, radius: min(10, bounds.height / 3), fill: fill,
                     border: primary ? (hover || isHighlighted ? c.accent : c.on) :
                         hover || isHighlighted ? (connection ? statusColor : c.accent) : c.border)
-            if key == "settings" || key == "theme" {
-                let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                let symbol = key == "settings" ? "gearshape" : (dark ? "moon.fill" : "sun.max")
-                let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+            if key == "settings" {
+                let image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
                 image?.isTemplate = true
                 let view = NSImageView(frame: NSRect(x: 8, y: 8, width: 16, height: 16))
                 view.image = image
@@ -219,9 +242,12 @@ final class NativeButton: NSButton {
                            color: primary && isEnabled ? .white : textColor, alignment: .center)
             }
         }
-        if window?.firstResponder === self {
-            let ring = NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 2), xRadius: 8, yRadius: 8)
-            ring.lineWidth = 2
+        if window?.firstResponder === self && showsKeyboardFocus {
+            let rect = ["startup", "tray"].contains(key) ? NSRect(x: 304, y: 2, width: 28, height: 28) :
+                ["claude", "codex", "copilot"].contains(key) ? NSRect(x: bounds.width - 59, y: 9, width: 52, height: 32) :
+                bounds.insetBy(dx: 2, dy: 2)
+            let ring = NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6)
+            ring.lineWidth = 1
             c.accent.setStroke()
             ring.stroke()
         }
@@ -237,7 +263,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
     var desktopTimer: Timer?
     var controls: [String: NSView] = [:]
     var groups: [String: [NSView]] = [:]
-    var currentView = "idle"
+    var currentView = "starting"
     var status: [String: Any] = [:]
     var settings: [String: Any] = ["startAtLogin": false, "closeToTray": true]
     var controlToken = UUID().uuidString + UUID().uuidString
@@ -247,9 +273,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
     var nextPoll = Date.distantFuture
     var expires = Date.distantFuture
     var busy = false
+    var pendingBridge: String?
     var refreshing = false
     var terminating = false
     var startupHandled = false
+    var bridgeReady = false
+    var startupDeadline = Date().addingTimeInterval(10)
+    var refreshError = ""
     var notice = ""
     var artwork: [String: NSImage] = [:]
     weak var actionFocus: NSResponder?
@@ -285,12 +315,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         let appItem = NSMenuItem()
         main.addItem(appItem)
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "About Kobashi", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: "About Kobashi2", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(withTitle: "Hide Kobashi", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "Hide Kobashi2", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(withTitle: "Quit Kobashi", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Quit Kobashi2", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         let edit = NSMenuItem()
         main.addItem(edit)
@@ -310,13 +340,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
     func setUpStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem?.button?.title = "K"
-        statusItem?.button?.toolTip = "Kobashi"
-        statusItem?.button?.setAccessibilityLabel("Kobashi")
+        statusItem?.button?.toolTip = "Kobashi2"
+        statusItem?.button?.setAccessibilityLabel("Kobashi2")
         let menu = NSMenu()
-        let show = menu.addItem(withTitle: "Show Kobashi", action: #selector(showWindow), keyEquivalent: "")
+        let show = menu.addItem(withTitle: "Show Kobashi2", action: #selector(showWindow), keyEquivalent: "")
         show.target = self
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(withTitle: "Quit Kobashi", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Quit Kobashi2", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         statusItem?.menu = menu
     }
 
@@ -343,6 +373,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         button.target = self
         button.action = action
         button.setButtonType(.momentaryPushIn)
+        button.setAccessibilityRole(.button)
         button.owner = self
         button.key = key
         button.setAccessibilityLabel(title)
@@ -367,6 +398,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         button.target = self
         button.action = action
         button.setButtonType(.switch)
+        button.setAccessibilityRole(.checkBox)
         button.owner = self
         button.key = key
         button.setAccessibilityLabel(title)
@@ -384,21 +416,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
             }
             artwork[name] = image
         }
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 480),
+        window = NSWindow(contentRect: NSRect(origin: .zero, size: windowSize),
                           styleMask: [.titled, .closable, .miniaturizable],
                           backing: .buffered, defer: false)
-        window.title = "Kobashi"
+        window.title = "Kobashi2"
         window.delegate = self
         window.isReleasedWhenClosed = false
-        let content = FlippedView(frame: NSRect(x: 0, y: 0, width: 400, height: 480))
+        window.autorecalculatesKeyViewLoop = true
+        let content = FlippedView(frame: NSRect(origin: .zero, size: windowSize))
         content.owner = self
         window.contentView = content
         window.center()
-        let title = GradientField(labelWithString: "Kobashi")
+        let title = GradientField(labelWithString: "Kobashi2")
         title.font = .systemFont(ofSize: 20, weight: .bold)
         add(title, key: "title", group: "all", y: 25, height: 27, x: 62, width: 136)
-        button("Settings", key: "settings", group: "all", y: 24, action: #selector(settingsView), x: 296, width: 32, height: 32)
-        button("Toggle light/dark mode", key: "theme", group: "all", y: 24, action: #selector(toggleTheme), x: 336, width: 32, height: 32)
+        button("Settings", key: "settings", group: "all", y: 24, action: #selector(settingsView), x: 336, width: 32, height: 32)
         button("Not Connected", key: "connect", group: "sign-in", y: 244, action: #selector(connect), x: 95, width: 210, height: 42)
         let hint = "Have an access token?"
         let link = "Paste it instead"
@@ -406,10 +438,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         let hintWidth = ceil((hint as NSString).size(withAttributes: [.font: hintFont]).width) + 8
         let linkWidth = ceil((link as NSString).size(withAttributes: [.font: hintFont]).width) + 8
         let hintX = (400 - hintWidth - 6 - linkWidth) / 2
-        label(hint, key: "tokenTeaser", group: "idle", y: 303, height: 24, x: hintX, width: hintWidth, size: 12)
-        button(link, key: "tokenView", group: "idle", y: 299, action: #selector(tokenView),
+        label(hint, key: "tokenTeaser", group: "idle", y: 215, height: 24, x: hintX, width: hintWidth, size: 12)
+        button(link, key: "tokenView", group: "idle", y: 211, action: #selector(tokenView),
                x: hintX + hintWidth + 6, width: linkWidth, height: 24)
-        label("Access token", key: "tokenLabel", group: "token", y: 253, height: 12, x: 60, width: 280, size: 11)
+        label("Access token", key: "tokenLabel", group: "token", y: 197, height: 12, x: 60, width: 280, size: 11)
         let token = NSSecureTextField()
         token.placeholderString = "Paste your access token"
         token.setAccessibilityLabel("Access token")
@@ -418,35 +450,46 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         token.focusRingType = .none
         token.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
         token.delegate = self
-        add(token, key: "token", group: "token", y: 274, height: 22, x: 73, width: 254)
-        button("Not Connected", key: "login", group: "token", y: 314, action: #selector(login), x: 60, width: 280, height: 40)
-        label("Enter this code at GitHub", key: "deviceLabel", group: "device", y: 203, height: 20, x: 53, width: 294, size: 12)
+        add(token, key: "token", group: "token", y: 218, height: 22, x: 73, width: 254)
+        button("Not Connected", key: "login", group: "token", y: 258, action: #selector(login), x: 60, width: 280, height: 40)
+        label("Enter this code at GitHub", key: "deviceLabel", group: "device", y: 147, height: 20, x: 53, width: 294, size: 12)
         (controls["deviceLabel"] as? NSTextField)?.alignment = .center
-        button("https://github.com/login/device", key: "browser", group: "device", y: 230, action: #selector(openGitHub), x: 70, width: 260, height: 24)
+        button("https://github.com/login/device", key: "browser", group: "device", y: 174, action: #selector(openGitHub), x: 70, width: 260, height: 24)
         let code = GradientField(labelWithString: "")
         code.font = .monospacedSystemFont(ofSize: 32, weight: .bold)
         code.centered = true
-        add(code, key: "code", group: "device", y: 262, height: 42, x: 53, width: 294)
-        button("Copy", key: "copy", group: "device", y: 309, action: #selector(copyCode), x: 166, width: 68, height: 24)
-        label("", key: "account", group: "connected", y: 165, height: 22, x: 77, width: 140, size: 13)
-        button("Connected", key: "disconnect", group: "connected", y: 160, action: #selector(disconnect), x: 255, width: 94, height: 28)
-        label("AI credits this cycle", key: "usageLabel", group: "connected", y: 201, height: 16, x: 50, width: 170, size: 11)
-        label("", key: "usageValue", group: "connected", y: 201, height: 16, x: 220, width: 129, size: 11)
+        add(code, key: "code", group: "device", y: 206, height: 42, x: 53, width: 294)
+        button("Copy", key: "copy", group: "device", y: 253, action: #selector(copyCode), x: 166, width: 68, height: 24)
+        label("", key: "account", group: "connected", y: 92, height: 22, x: 77, width: 140, size: 13)
+        button("Connected", key: "disconnect", group: "connected", y: 87, action: #selector(disconnect), x: 255, width: 94, height: 28)
+        label("AI credits this cycle", key: "usageLabel", group: "connected", y: 128, height: 16, x: 50, width: 170, size: 11)
+        label("", key: "usageValue", group: "connected", y: 128, height: 16, x: 220, width: 129, size: 11)
         (controls["usageValue"] as? NSTextField)?.alignment = .right
-        checkbox("Claude Bridge", key: "claude", group: "connected", y: 257, height: 50, action: #selector(toggleClaude), x: 40, width: 320)
-        checkbox("Codex Bridge", key: "codex", group: "connected", y: 307, height: 50, action: #selector(toggleCodex), x: 40, width: 320)
-        checkbox("Copilot Bridge", key: "copilot", group: "connected", y: 357, height: 50, action: #selector(toggleCopilot), x: 40, width: 320)
+        checkbox("Claude", key: "claude", group: "connected", y: 184, height: 50, action: #selector(toggleClaude), x: 40, width: 320)
+        checkbox("Codex", key: "codex", group: "connected", y: 234, height: 50, action: #selector(toggleCodex), x: 40, width: 320)
+        checkbox("Copilot", key: "copilot", group: "connected", y: 284, height: 50, action: #selector(toggleCopilot), x: 40, width: 320)
         label("Settings", key: "settingsTitle", group: "settings", y: 70, height: 32, width: 260, size: 18)
         (controls["settingsTitle"] as? NSTextField)?.font = .systemFont(ofSize: 18, weight: .bold)
-        checkbox("Start at login", key: "startup", group: "settings", y: 118, height: 88, action: #selector(saveStartup))
-        label("Start Kobashi when you sign in to your computer.", key: "startupHelp", group: "settings", y: 156, height: 34, x: 48, width: 268, size: 12)
-        checkbox("Close to system tray", key: "tray", group: "settings", y: 218, height: 88, action: #selector(saveTray))
-        label("Keep bridges running when the window is closed.", key: "trayHelp", group: "settings", y: 256, height: 34, x: 48, width: 268, size: 12)
+        checkbox("Start at login", key: "startup", group: "settings", y: 118, height: 30, action: #selector(saveStartup))
+        checkbox("Close to system tray", key: "tray", group: "settings", y: 166, height: 30, action: #selector(saveTray))
+        label("Appearance", key: "appearanceLabel", group: "settings", y: 218, height: 24, x: 40, width: 132)
+        let appearance = AppearanceSelector(frame: .zero, pullsDown: false)
+        appearance.addItems(withTitles: ["Auto", "Light", "Dark"])
+        for (item, mode) in zip(appearance.itemArray, ["system", "light", "dark"]) {
+            item.representedObject = mode
+        }
+        appearance.font = .systemFont(ofSize: 14)
+        appearance.target = self
+        appearance.action = #selector(changeAppearance(_:))
+        appearance.setAccessibilityLabel("Appearance")
+        appearance.setAccessibilityHelp("Auto follows your system appearance.")
+        appearance.toolTip = "Auto follows your system appearance."
+        add(appearance, key: "appearance", group: "settings", y: 214, height: 30, x: 188, width: 172)
         /*
         button("Connect to Server", key: "clientView", group: "settings", y: 316, action: #selector(clientView), width: 164, height: 32)
-        button("Share this Kobashi", key: "serverView", group: "settings", y: 316, action: #selector(serverView), x: 204, width: 164, height: 32)
+        button("Share this Kobashi2", key: "serverView", group: "settings", y: 316, action: #selector(serverView), x: 204, width: 164, height: 32)
         label("Connect to Server", key: "clientTitle", group: "client", y: 70, height: 28, size: 18)
-        label("Share this Kobashi", key: "serverTitle", group: "server", y: 70, height: 28, size: 18)
+        label("Share this Kobashi2", key: "serverTitle", group: "server", y: 70, height: 28, size: 18)
         label("Server URL", key: "remoteURLLabel", group: "client", y: 120, height: 20, size: 12)
         label("Server access token", key: "remoteTokenLabel", group: "client", y: 190, height: 20, size: 12)
         label("Listen IP:port", key: "listenLabel", group: "server", y: 120, height: 20, size: 12)
@@ -471,11 +514,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         (controls["networkDone"] as? NSButton)?.keyEquivalent = "\u{1b}"
         */
         label("", key: "notice", group: "all", y: 373, height: 42, size: 12)
-        button("Done", key: "done", group: "settings", y: 372, action: #selector(done), width: 336, height: 38)
+        button("Done", key: "done", group: "settings", y: 302, action: #selector(done), width: 336, height: 38)
         (controls["done"] as? NSButton)?.keyEquivalent = "\u{1b}"
-        button("Quit Kobashi", key: "quit", group: "settings", y: 418, action: #selector(NSApplication.terminate(_:)), x: 144, width: 112, height: 24)
-        (controls["quit"] as? NSButton)?.target = NSApp
-        button("Version", key: "project", group: "all", y: 446, action: #selector(openProject), x: 252, width: 116, height: 24)
+        button("Version", key: "project", group: "all", y: footerY, action: #selector(openProject), x: 252, width: 116, height: 24)
         render()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -484,6 +525,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
     }
 
     func startServer() {
+        startupDeadline = Date().addingTimeInterval(10)
         guard let resources = Bundle.main.resourceURL else { showError("The app bundle has no resources."); return }
         #if arch(arm64)
         let binary = "kobashi-arm64"
@@ -523,13 +565,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         guard let url = URL(string: "http://127.0.0.1:\(UI_PORT)\(path)") else { completion(nil, "Invalid local URL."); return }
         var request = URLRequest(url: url)
         request.setValue("Bearer \(controlToken)", forHTTPHeaderField: "Authorization")
+        if body == nil { request.timeoutInterval = 5 }
         if let body {
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             do { request.httpBody = try JSONSerialization.data(withJSONObject: body) }
             catch { completion(nil, error.localizedDescription); return }
         }
-        localSession.dataTask(with: request) { data, response, error in
+        localSession.dataTask(with: request) { [weak self] data, response, error in
             var result: [String: Any]?
             var message = error?.localizedDescription
             if message == nil,
@@ -547,7 +590,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
             }
             let finalResult = message == nil ? result : nil
             let finalMessage = message
-            DispatchQueue.main.async { completion(finalResult, finalMessage) }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                let code = (error as? URLError)?.code
+                let connectionFailure = code == .cannotConnectToHost || code == .networkConnectionLost || code == .timedOut
+                if path == "/api/status", body == nil, connectionFailure,
+                   !self.bridgeReady, self.serverProcess?.isRunning == true,
+                   Date() < self.startupDeadline, !self.terminating {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        self.request(path, completion: completion)
+                    }
+                    return
+                }
+                let detail = connectionFailure
+                    ? "Could not connect to Kobashi2's local bridge. See ~/.kobashi/kobashi.log."
+                    : finalMessage
+                completion(finalResult, detail)
+            }
         }.resume()
     }
 
@@ -558,42 +617,51 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
             guard let self else { return }
             if let value {
                 self.status = value
-                if !self.startupHandled, !self.busy { self.notice = "" }
-                if self.currentView != "settings", value["connected"] as? Bool == true { self.currentView = "connected" }
+                self.bridgeReady = value["ready"] as? Bool != false
+                if !self.bridgeReady {
+                    if self.currentView != "settings" { self.currentView = "starting" }
+                } else if self.currentView == "starting" {
+                    self.currentView = value["connected"] as? Bool == true ? "connected" : "idle"
+                }
+                if self.bridgeReady, self.currentView != "settings", value["connected"] as? Bool == true { self.currentView = "connected" }
                 // !["settings", "client", "server"].contains(self.currentView)
-                if self.currentView == "connected", value["connected"] as? Bool != true { self.currentView = "idle" }
-            } else if let error { self.notice = error }
+                if self.bridgeReady, self.currentView == "connected", value["connected"] as? Bool != true { self.currentView = "idle" }
+            }
+            let statusError = error
             self.request("/api/settings") { [weak self] value, error in
                 guard let self else { return }
                 self.refreshing = false
+                self.refreshError = statusError ?? error ?? ""
                 if let value {
                     self.settings = value
                     self.closeToTray = value["closeToTray"] as? Bool ?? true
-                    if !self.startupHandled {
+                    if self.bridgeReady, !self.startupHandled {
                         self.startupHandled = true
                         if ProcessInfo.processInfo.arguments.contains("--startup"), self.closeToTray {
                             self.window.orderOut(nil)
                             NSApp.setActivationPolicy(.accessory)
                         }
                     }
-                } else if let error { self.notice = error }
+                }
                 self.render()
             }
         }
     }
 
     func action(_ path: String, _ body: [String: Any] = [:]) {
-        guard !busy, !terminating else { return }
+        guard !busy, !terminating, currentView != "starting" else { return }
         busy = true
+        pendingBridge = ["codex", "claude", "copilot"].first { path == "/api/toggle-\($0)" }
         actionFocus = window.firstResponder
         if let field = controls.values.first(where: {
             ($0 as? NSTextField)?.currentEditor() === window.firstResponder
         }) { actionFocus = field }
-        notice = "Working..."
+        notice = pendingBridge == nil && !["/api/settings", "/api/appearance"].contains(path) ? "Working..." : ""
         render()
         request(path, body: body) { [weak self] value, error in
             guard let self else { return }
             self.busy = false
+            self.pendingBridge = nil
             self.notice = error ?? ""
             if let value, error == nil {
                 switch path {
@@ -633,7 +701,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
                 case "/api/settings":
                     self.settings = value
                     self.closeToTray = value["closeToTray"] as? Bool ?? self.closeToTray
-                    self.notice = "Settings saved."
                 /*
                 case "/api/server":
                     (self.controls["serverToken"] as? NSTextField)?.stringValue = value["token"] as? String ?? ""
@@ -705,7 +772,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         guard let image = artwork[key] else { return }
         if let tint {
             let colored = NSImage(size: rect.size, flipped: true) { box in
-                image.draw(in: box, from: .zero, operation: .sourceOver, fraction: 1)
+                image.draw(in: box, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
                 tint.setFill()
                 box.fill(using: .sourceIn)
                 return true
@@ -727,35 +794,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
     func controlTextDidBeginEditing(_ notification: Notification) { window.contentView?.needsDisplay = true }
     func controlTextDidEndEditing(_ notification: Notification) { window.contentView?.needsDisplay = true }
 
-    var connectedOffset: CGFloat {
-        guard currentView == "connected" else { return 0 }
-        return notice.isEmpty && (status["error"] as? String ?? "").isEmpty ? 73 : 41
+    var hasHeaderNotice: Bool {
+        currentView == "connected" && (!notice.isEmpty || !refreshError.isEmpty || !(status["error"] as? String ?? "").isEmpty)
     }
 
     func render() {
         let appearance = status["appearance"] as? String ?? "system"
         NSApp.appearance = appearance == "dark" ? NSAppearance(named: .darkAqua) : appearance == "light" ? NSAppearance(named: .aqua) : nil
         let colors = NativeColors.current
-        let offset = connectedOffset
-        let size = NSSize(width: 400, height: 480 - offset)
+        if let selector = controls["appearance"] as? NSPopUpButton {
+            selector.selectItem(at: ["system", "light", "dark"].firstIndex(of: appearance) ?? 0)
+            selector.isEnabled = !busy
+        }
+        let size = windowSize
         if window.contentView?.bounds.size != size {
             let top = window.frame.maxY
             window.setContentSize(size)
             window.setFrameTopLeftPoint(NSPoint(x: window.frame.minX, y: top))
         }
-        for (key, y) in ["account": 165, "disconnect": 160, "usageLabel": 201, "usageValue": 201,
-                         "claude": 257, "codex": 307, "copilot": 357, "project": 446] {
-            controls[key]?.frame.origin.y = CGFloat(y) - offset
-        }
-        controls["connect"]?.frame.origin.y = currentView == "token" ? 210 : 244
+        controls["connect"]?.frame.origin.y = currentView == "token" ? 154 : 160
         let noticeFrame: NSRect
         switch currentView {
-        case "connected": noticeFrame = NSRect(x: 32, y: 72, width: 336, height: 30)
+        case "connected": noticeFrame = NSRect(x: 32, y: 24, width: 248, height: 32)
         case "settings": noticeFrame = NSRect(x: 32, y: 70, width: 336, height: 32)
         // case "client", "server": noticeFrame = NSRect(x: 32, y: 316, width: 336, height: 48)
-        case "token": noticeFrame = NSRect(x: 32, y: 364, width: 336, height: 62)
-        case "device": noticeFrame = NSRect(x: 32, y: 378, width: 336, height: 48)
-        default: noticeFrame = NSRect(x: 32, y: 334, width: 336, height: 70)
+        case "token": noticeFrame = NSRect(x: 32, y: 308, width: 336, height: 40)
+        case "device": noticeFrame = NSRect(x: 32, y: 308, width: 336, height: 40)
+        default: noticeFrame = NSRect(x: 32, y: 252, width: 336, height: 70)
         }
         controls["notice"]?.frame = noticeFrame
         for (group, views) in groups {
@@ -764,10 +829,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
                 // || (group == "network" && ["client", "server"].contains(currentView))
             for view in views {
                 view.isHidden = !visible
-                if let button = view as? NSButton, view !== controls["quit"], view !== controls["done"] { button.isEnabled = !busy }
+                if let button = view as? NSButton, view !== controls["done"] {
+                    button.isEnabled = !busy && (currentView != "starting" || view === controls["project"])
+                }
                 if let field = view as? NSTextField { field.textColor = colors.muted }
                 view.needsDisplay = true
             }
+        }
+        if let connect = controls["connect"] as? NSButton {
+            if currentView == "starting" { connect.isHidden = false }
+            connect.title = currentView == "starting"
+                ? (!notice.isEmpty || !refreshError.isEmpty ? "Unavailable" : "Starting...") : "Not Connected"
+            connect.setAccessibilityLabel(connect.title)
         }
         let token = controls["token"] as? NSSecureTextField
         token?.isEnabled = !busy
@@ -787,7 +860,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         (controls["serverToggle"] as? NSButton)?.setAccessibilityLabel(serverAction)
         */
         for (key, field) in [("codex", "codexEnabled"), ("claude", "claudeEnabled"), ("copilot", "copilotEnabled")] {
-            (controls[key] as? NSButton)?.state = status[field] as? Bool == true ? .on : .off
+            if let button = controls[key] as? NativeButton {
+                button.state = status[field] as? Bool == true ? .on : .off
+                if button.accessibilityHelp() != button.bridgeStatusText {
+                    button.setAccessibilityHelp(button.bridgeStatusText)
+                    NSAccessibility.post(element: button, notification: .valueChanged)
+                }
+            }
         }
         for (key, field) in [("startup", "startAtLogin"), ("tray", "closeToTray")] {
             (controls[key] as? NSButton)?.state = settings[field] as? Bool == true ? .on : .off
@@ -797,6 +876,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         setLabel("account", "\(prefix)\(status["username"] as? String ?? "")")
         (controls["account"] as? NSTextField)?.textColor = colors.accent
         (controls["settingsTitle"] as? NSTextField)?.textColor = colors.text
+        (controls["appearanceLabel"] as? NSTextField)?.textColor = colors.text
         for key in ["usageLabel", "usageValue"] { controls[key]?.isHidden = currentView != "connected" || usageValues == nil }
         if let (used, total) = usageValues {
             let formatter = NumberFormatter()
@@ -808,6 +888,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
             setLabel("usageValue", "\(usedText) / \(totalText)")
         }
         var message = notice
+        if message.isEmpty { message = refreshError }
         if message.isEmpty { message = status["error"] as? String ?? "" }
         if message.isEmpty, currentView == "settings" { message = settings["error"] as? String ?? "" }
         // if message.isEmpty, currentView == "client" { message = "No GitHub sign-in needed. Disconnect the current source before connecting." }
@@ -815,8 +896,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         if message.isEmpty, currentView == "device" { message = "Waiting for authorization..." }
         setLabel("notice", message)
         controls["notice"]?.isHidden = currentView == "connected" && message.isEmpty
+        controls["title"]?.isHidden = hasHeaderNotice
         controls["settingsTitle"]?.isHidden = currentView != "settings" || !message.isEmpty
-        if !message.isEmpty, !["Working...", "Settings saved.", "Code copied."].contains(message),
+        if !message.isEmpty, message != "Working...",
            currentView != "device", !terminating, message != "Changes are saved automatically." {
             (controls["notice"] as? NSTextField)?.textColor = colors.danger
         }
@@ -843,7 +925,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
     @objc func toggleClaude() { action("/api/toggle-claude") }
     @objc func toggleCopilot() { action("/api/toggle-copilot") }
     @objc func disconnect() { action("/api/disconnect") }
-    @objc func settingsView() { currentView = "settings"; notice = ""; render(); window.makeFirstResponder(controls["startup"]) }
+    @objc func settingsView() {
+        if currentView == "settings" { done(); return }
+        currentView = "settings"
+        notice = ""
+        render()
+        window.makeFirstResponder(controls["startup"])
+    }
     /*
     func fieldValue(_ key: String) -> String {
         (controls[key] as? NSTextField)?.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -904,11 +992,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
     */
     @objc func saveStartup() { action("/api/settings", ["startAtLogin": (controls["startup"] as? NSButton)?.state == .on]) }
     @objc func saveTray() { action("/api/settings", ["closeToTray": (controls["tray"] as? NSButton)?.state == .on]) }
-    @objc func done() { deviceCode = ""; currentView = status["connected"] as? Bool == true ? "connected" : "idle"; notice = ""; render(); window.makeFirstResponder(controls["settings"]) }
+    @objc func done() { deviceCode = ""; currentView = status["ready"] as? Bool == false ? "starting" : status["connected"] as? Bool == true ? "connected" : "idle"; notice = ""; render(); window.makeFirstResponder(controls["settings"]) }
     @objc func copyCode() {
         NSPasteboard.general.clearContents()
         if !NSPasteboard.general.setString((controls["code"] as? NSTextField)?.stringValue ?? "", forType: .string) { notice = "Could not write clipboard." }
-        else { notice = "Code copied." }
+        else { notice = "" }
         render()
     }
     @objc func openGitHub() {
@@ -921,9 +1009,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
             render()
         }
     }
-    @objc func toggleTheme() {
-        let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        action("/api/appearance", ["appearance": dark ? "light" : "dark"])
+    @objc func changeAppearance(_ sender: NSPopUpButton) {
+        guard let mode = sender.selectedItem?.representedObject as? String,
+              mode != (status["appearance"] as? String ?? "system") else { return }
+        action("/api/appearance", ["appearance": mode])
     }
     @objc func showWindow() {
         NSApp.setActivationPolicy(.regular)
@@ -958,7 +1047,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
     }
     func showError(_ message: String) {
         let alert = NSAlert()
-        alert.messageText = "Kobashi"
+        alert.messageText = "Kobashi2"
         alert.informativeText = message
         alert.alertStyle = .warning
         alert.runModal()

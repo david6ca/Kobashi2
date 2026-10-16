@@ -94,7 +94,7 @@ func TestNativeWindowControlsSizeSettingsAndTrayLifecycle(t *testing.T) {
 	suggested := rect{Left: 100, Top: 100}
 	proc("SendMessageW", h, 0x2e0, 144<<16|144, uintptr(unsafe.Pointer(&suggested)))
 	proc("GetClientRect", h, uintptr(unsafe.Pointer(&r)))
-	if r.Right != 600 || r.Bottom != 600 {
+	if r.Right != windowWidth*144/96 || r.Bottom != windowHeight*144/96 {
 		t.Fatal("DPI changes did not preserve logical dimensions", r)
 	}
 	proc("SendMessageW", h, 0x2e0, dpi<<16|dpi, uintptr(unsafe.Pointer(&suggested)))
@@ -102,7 +102,7 @@ func TestNativeWindowControlsSizeSettingsAndTrayLifecycle(t *testing.T) {
 	if style&(0x40000|0x10000) != 0 {
 		t.Fatal("resize or maximize enabled")
 	}
-	for id, class := range map[int]string{idToken: "Edit", idStartup: "Button", idTray: "Button", idSettings: "Button", idCopilot: "Button"} {
+	for id, class := range map[int]string{idToken: "Edit", idStartup: "Button", idTray: "Button", idSettings: "Button", idCopilot: "Button", idAppearance: "ComboBox"} {
 		child := proc("GetDlgItem", h, uintptr(id))
 		buf := make([]uint16, 64)
 		proc("GetClassNameW", child, uintptr(unsafe.Pointer(&buf[0])), 64)
@@ -137,6 +137,23 @@ func TestNativeWindowControlsSizeSettingsAndTrayLifecycle(t *testing.T) {
 	waitFor(t, func() bool { return a.Settings().StartAtLogin })
 	if data, err := os.ReadFile(filepath.Join(home, ".kobashi", "settings.json")); err != nil || !strings.Contains(string(data), `"startAtLogin": true`) {
 		t.Fatal("setting was not persisted", err)
+	}
+	selector := proc("GetDlgItem", h, idAppearance)
+	for _, selection := range []struct {
+		index uintptr
+		mode  string
+	}{{1, "light"}, {2, "dark"}, {0, "system"}} {
+		proc("SetFocus", selector)
+		proc("SendMessageW", selector, 0x14e, selection.index, 0)
+		proc("SendMessageW", h, 0x111, 1<<16|idAppearance, selector)
+		waitFor(t, func() bool {
+			data, err := os.ReadFile(filepath.Join(home, ".kobashi", "appearance.json"))
+			return err == nil && strings.TrimSpace(string(data)) == `"`+selection.mode+`"` &&
+				proc("IsWindowEnabled", selector) != 0 && proc("SendMessageW", selector, 0x147, 0, 0) == selection.index
+		})
+		if proc("GetWindowTextLengthW", proc("GetDlgItem", h, 12)) != 0 {
+			t.Fatal("successful appearance changes must stay silent")
+		}
 	}
 	proc("SendMessageW", h, 0x111, idDone, 0)
 	if proc("GetWindowLongW", proc("GetDlgItem", h, idDone), ^uintptr(15))&0x10000000 != 0 ||
@@ -188,7 +205,7 @@ func TestNativeWindowControlsSizeSettingsAndTrayLifecycle(t *testing.T) {
 			}
 		}
 	*/
-	for _, title := range []string{"Connect to &Server", "Share this &Kobashi"} {
+	for _, title := range []string{"Connect to &Server", "Share this &Kobashi2"} {
 		if proc("FindWindowExW", h, 0, 0, uintptr(unsafe.Pointer(wide(title)))) != 0 {
 			t.Fatal("network settings entry is still present", title)
 		}
