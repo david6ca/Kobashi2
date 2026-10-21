@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -194,13 +195,16 @@ func TestPublishAppReplacesBundleAndPreservesWindowsRelease(t *testing.T) {
 	}
 }
 
-func TestReplaceAppRestoresPreviousBundleOnFailure(t *testing.T) {
+func TestReplaceArtifactRestoresPreviousBundleOnFailure(t *testing.T) {
 	dist := t.TempDir()
 	writeReleaseFixture(t, dist, map[string]string{
 		"Kobashi2.app/Contents/Info.plist": "previous",
 	})
 	target := filepath.Join(dist, "Kobashi2.app")
-	if err := replaceApp(filepath.Join(dist, "missing.app"), target); err == nil {
+	if err := replaceArtifact(filepath.Join(dist, "missing.app"), target, func() error {
+		t.Fatal("commit called after artifact replacement failed")
+		return nil
+	}); err == nil {
 		t.Fatal("missing bundle accepted")
 	}
 	data, err := os.ReadFile(filepath.Join(target, "Contents", "Info.plist"))
@@ -210,5 +214,121 @@ func TestReplaceAppRestoresPreviousBundleOnFailure(t *testing.T) {
 	files, err := os.ReadDir(dist)
 	if err != nil || len(files) != 1 {
 		t.Fatal("backup directory retained after rollback", files, err)
+	}
+}
+
+func TestReplaceArtifactRestoresPreviousReleaseWhenCommitFails(t *testing.T) {
+	dist := t.TempDir()
+	source := filepath.Join(t.TempDir(), "new.exe")
+	target := filepath.Join(dist, "Kobashi2.exe")
+	writeReleaseFixture(t, dist, map[string]string{
+		"Kobashi2.exe":   "previous",
+		"SHA256SUMS.txt": "previous checksums",
+	})
+	if err := os.WriteFile(source, []byte("new"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	commitErr := errors.New("manifest replacement failed")
+	err := replaceArtifact(source, target, func() error { return commitErr })
+	if !errors.Is(err, commitErr) {
+		t.Fatal("commit failure not preserved", err)
+	}
+	for name, want := range map[string]string{
+		"Kobashi2.exe":   "previous",
+		"SHA256SUMS.txt": "previous checksums",
+	} {
+		data, err := os.ReadFile(filepath.Join(dist, name))
+		if err != nil || string(data) != want {
+			t.Fatal("previous release changed", name, err)
+		}
+	}
+	data, err := os.ReadFile(source)
+	if err != nil || string(data) != "new" {
+		t.Fatal("uncommitted artifact not withdrawn", err)
+	}
+	files, err := os.ReadDir(dist)
+	if err != nil || len(files) != 2 {
+		t.Fatal("publication intermediates retained", files, err)
+	}
+}
+
+func TestPublishRollsBackWhenChecksumsCannotBePublished(t *testing.T) {
+	for _, name := range []string{"Kobashi2.exe", "Kobashi2.app"} {
+		for _, existing := range []bool{false, true} {
+			t.Run(name+map[bool]string{false: "/new", true: "/existing"}[existing], func(t *testing.T) {
+				dist := t.TempDir()
+				scratch := t.TempDir()
+				file := name
+				if name == "Kobashi2.app" {
+					file = filepath.Join(name, "Contents", "Info.plist")
+				}
+				writeReleaseFixture(t, scratch, map[string]string{file: "new release"})
+				if existing {
+					writeReleaseFixture(t, dist, map[string]string{file: "previous release"})
+				}
+				// A directory at the manifest path makes the final replacement fail.
+				writeReleaseFixture(t, dist, map[string]string{
+					"SHA256SUMS.txt/keep": "previous manifest placeholder",
+				})
+				if err := publish(dist, filepath.Join(scratch, name), name); err == nil {
+					t.Fatal("checksum publication failure was ignored")
+				}
+				if existing {
+					data, err := os.ReadFile(filepath.Join(dist, file))
+					if err != nil || string(data) != "previous release" {
+						t.Fatal("previous release not restored", string(data), err)
+					}
+				} else if _, err := os.Lstat(filepath.Join(dist, name)); !errors.Is(err, os.ErrNotExist) {
+					t.Fatal("new release retained without checksums", err)
+				}
+				data, err := os.ReadFile(filepath.Join(dist, "SHA256SUMS.txt", "keep"))
+				if err != nil || string(data) != "previous manifest placeholder" {
+					t.Fatal("manifest target changed", err)
+				}
+				files, err := os.ReadDir(dist)
+				want := 1
+				if existing {
+					want++
+				}
+				if err != nil || len(files) != want {
+					t.Fatal("publication intermediates retained", files, err)
+				}
+			})
+		}
+	}
+}
+
+func TestReplaceArtifactKeepsRecoveryCopyWhenRollbackFails(t *testing.T) {
+	dist := t.TempDir()
+	source := filepath.Join(t.TempDir(), "new.exe")
+	target := filepath.Join(dist, "Kobashi2.exe")
+	writeReleaseFixture(t, dist, map[string]string{"Kobashi2.exe": "previous"})
+	if err := os.WriteFile(source, []byte("new"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	commitErr := errors.New("manifest replacement failed")
+	err := replaceArtifact(source, target, func() error {
+		return errors.Join(commitErr, os.Mkdir(source, 0700))
+	})
+	if !errors.Is(err, commitErr) || !strings.Contains(err.Error(), "recovery directory kept at") {
+		t.Fatal("rollback failure not reported", err)
+	}
+	files, err := os.ReadDir(dist)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, file := range files {
+		if !file.IsDir() {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dist, file.Name(), "Kobashi2.exe"))
+		if err != nil || string(data) != "previous" {
+			t.Fatal("recovery copy missing", err)
+		}
+		found = true
+	}
+	if !found {
+		t.Fatal("recovery directory missing")
 	}
 }

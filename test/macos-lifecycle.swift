@@ -54,6 +54,10 @@ defer {
 }
 subject.setUpStatusItem()
 subject.setUpMainMenu()
+check(subject.statusItem?.button?.title == "" &&
+      subject.statusItem?.button?.image?.isTemplate == true &&
+      subject.statusItem?.button?.image?.size == NSSize(width: 22, height: 18),
+      "The menu bar uses the connection mark instead of a letter, with system-controlled contrast")
 check(subject.createWindow(), "The native window loads its existing brand artwork")
 check(subject.window.title == "Kobashi2" &&
       (subject.controls["title"] as? NSTextField)?.stringValue == "Kobashi2" &&

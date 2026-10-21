@@ -42,6 +42,19 @@ func rounded(_ rect: NSRect, radius: CGFloat, fill: NSColor, border: NSColor) {
     path.stroke()
 }
 
+func menuBarIcon() -> NSImage {
+    let image = NSImage(size: NSSize(width: 22, height: 18), flipped: false) { _ in
+        NSColor.black.setFill()
+        NSRect(x: 5, y: 7.5, width: 12, height: 3).fill()
+        for x: CGFloat in [1.5, 13.5] {
+            NSBezierPath(ovalIn: NSRect(x: x, y: 5.5, width: 7, height: 7)).fill()
+        }
+        return true
+    }
+    image.isTemplate = true
+    return image
+}
+
 func nativeText(_ text: String, in rect: NSRect, font: NSFont, color: NSColor,
                 alignment: NSTextAlignment = .left) {
     let paragraph = NSMutableParagraphStyle()
@@ -339,7 +352,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
 
     func setUpStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem?.button?.title = "K"
+        statusItem?.button?.image = menuBarIcon()
+        statusItem?.button?.imagePosition = .imageOnly
         statusItem?.button?.toolTip = "Kobashi2"
         statusItem?.button?.setAccessibilityLabel("Kobashi2")
         let menu = NSMenu()

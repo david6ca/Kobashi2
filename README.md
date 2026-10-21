@@ -78,6 +78,8 @@ the window or moves the cards. Main-screen errors temporarily replace the header
 title, beside the Settings action, rather than reserving empty space.
 Mouse selection adds no thick row border; keyboard focus remains visible around
 the relevant control. The app icon uses two solid circles joined by a line.
+The macOS menu bar uses the same connection mark as a template icon, so macOS
+controls its color for light, dark, and highlighted menu-bar states.
 Both themes use purple accents; active/connected indicators stay green, errors
 stay red, and paused/disconnected indicators stay neutral gray.
 Windows scales the entire window,
@@ -356,6 +358,10 @@ changes to user data, tools, model IDs, or token budgets are never guessed.
 
 Streaming failures preserve the upstream error code and message, including when
 Copilot sends those details after an empty `response.failed` event. Failures are
+held across SSE keepalives so a following error still reaches the client.
+If the provider supplies no message, the bridge reports that explicitly rather
+than forwarding an unexplained failure. It never turns a failed stream into a
+successful completion or replays an already-started response. Failures are
 logged in `~/.kobashi/kobashi.log`. Encrypted agent content is forwarded unchanged.
 If Copilot cannot decrypt it, Kobashi2 reports the actual failure rather than
 discarding the message or presenting ciphertext as readable conversation text.
@@ -411,8 +417,10 @@ After a successful build, only `dist/Kobashi2.app` (macOS) or `dist/Kobashi2.exe
 (Windows) and `dist/SHA256SUMS.txt` are published back to the checkout. The existing
 release for the other platform is preserved. `SHA256SUMS.txt` lists the Windows
 executable and each file inside the macOS app bundle. The complete bundle is
-copied and verified before replacing an existing app; replacement failure
-triggers rollback to the previous bundle. No intermediate binaries or dated build
+copied and verified before replacing an existing app. If artifact or checksum
+publication fails, the previous release is restored; if rollback itself fails,
+the error identifies the retained recovery directory. This is not a crash-atomic
+transaction across both files. No intermediate binaries or dated build
 directories are left in `dist`.
 If an existing executable is in use, leave it running and use `-output <directory>`
 to save the finished package elsewhere. The build never stops a running app.

@@ -53,6 +53,26 @@ func alphaDifference(_ actual: NSBitmapImageRep, _ expected: NSBitmapImageRep) -
 let application = NSApplication.shared
 application.setActivationPolicy(.prohibited)
 let subject = AppDelegate()
+let mark = menuBarIcon()
+check(mark.isTemplate && mark.size == NSSize(width: 22, height: 18),
+      "The menu-bar mark uses a fixed-size system template")
+let mask = mark.copy() as! NSImage
+mask.isTemplate = false
+for scale in [1, 2] {
+    let imageView = NSImageView(frame: NSRect(x: 0, y: 0, width: 22 * scale, height: 18 * scale))
+    imageView.image = mask
+    imageView.imageScaling = .scaleAxesIndependently
+    let pixels = bitmap(imageView)
+    func alpha(_ x: CGFloat, _ y: CGFloat) -> CGFloat {
+        pixels.colorAt(x: Int(x / 22 * CGFloat(pixels.pixelsWide)),
+                       y: Int(y / 18 * CGFloat(pixels.pixelsHigh)))!.alphaComponent
+    }
+    check(alpha(5, 9) > 0.99 && alpha(17, 9) > 0.99 && alpha(11, 9) > 0.99 &&
+          alpha(5, 7) > 0.99 && alpha(17, 7) > 0.99,
+          "The \(scale)x menu-bar mark has two solid circles joined by a line")
+    check(alpha(0, 0) == 0 && alpha(11, 5) == 0 && alpha(11, 12) == 0,
+          "The \(scale)x menu-bar mark stays transparent outside the connection shape")
+}
 for key in ["github", "claude", "codex"] {
     guard let url = Bundle.main.url(forResource: key, withExtension: "png"),
           let image = NSImage(contentsOf: url) else {

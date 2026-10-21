@@ -44,21 +44,24 @@ func TestSSEFailureDetails(t *testing.T) {
 				delete(detail, "type")
 			}
 			source := "event: response.failed\r\nid: first\r\ndata: " + string(jsonBytes(failure)) +
-				"\r\n\r\nevent: error\r\nid: second\r\ndata: " + string(jsonBytes(detail)) + "\r\n\r\n"
+				"\r\n\r\n: keepalive\r\n\r\nretry: 1000\r\n\r\nevent: error\r\nid: second\r\ndata: " + string(jsonBytes(detail)) + "\r\n\r\n"
 			var out bytes.Buffer
 			var observed []object
-			if err := normalizeSSE(strings.NewReader(source), &out, func(v object) { observed = append(observed, v) }); err != nil {
+			if err := normalizeSSE(oneByteReader{strings.NewReader(source)}, &out, func(v object) { observed = append(observed, v) }); err != nil {
 				t.Fatal(err)
 			}
 			var frames []sseEvent
 			if err := readSSE(&out, func(e sseEvent) error { frames = append(frames, e); return nil }); err != nil {
 				t.Fatal(err)
 			}
-			if len(frames) != 2 || len(observed) != 2 {
+			if len(frames) != 4 || len(observed) != 2 {
 				t.Fatalf("lost error events: frames=%d observed=%d", len(frames), len(observed))
 			}
-			got, name := frames[0].data()
-			if name != "response.failed" || nested(got, "response", "status") != "failed" ||
+			if frames[0].lines[0] != ": keepalive" || frames[1].lines[0] != "retry: 1000" {
+				t.Fatal("keepalives were lost or buffered")
+			}
+			got, name := frames[2].data()
+			if name != "response.failed" || got["type"] != "response.failed" || nested(got, "response", "status") != "failed" ||
 				nested(got, "response", "id") != "r" || nested(got, "response", "error", "code") != detail["code"] ||
 				nested(got, "response", "error", "message") != detail["message"] {
 				t.Fatalf("failure details not preserved: %s", jsonBytes(got))
@@ -66,10 +69,10 @@ func TestSSEFailureDetails(t *testing.T) {
 			if !bytes.Equal(jsonBytes(parseError(observed[0])), jsonBytes(parseError(observed[1]))) {
 				t.Fatal("failure and following error disagree")
 			}
-			if frames[0].separator != "\r\n" || frames[0].lines[1] != "id: first" {
+			if frames[2].separator != "\r\n" || frames[2].lines[1] != "id: first" {
 				t.Fatal("SSE framing changed")
 			}
-			got, _ = frames[1].data()
+			got, _ = frames[3].data()
 			if !bytes.Equal(jsonBytes(got), jsonBytes(detail)) {
 				t.Fatal("following error event changed")
 			}
@@ -79,14 +82,10 @@ func TestSSEFailureDetails(t *testing.T) {
 
 func TestSSEOtherFramesRemainUnchanged(t *testing.T) {
 	for name, source := range map[string]string{
-		"success":                  "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"r\",\"status\":\"completed\",\"output\":[]}}\n\n",
-		"detailedFailure":          "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"server_error\",\"message\":\"Original error\"}}}\n\n",
-		"emptyFailureEOF":          "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":null}}\n\n",
-		"emptyFailureEnd":          "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":null}}\n\ndata: [DONE]\n\n",
-		"partialFrameEOF":          "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":null}}",
-		"invalidJSON":              "event: error\ndata: invalid\n\n",
-		"invalidErrorAfterFailure": "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":null}}\n\nevent: error\ndata: invalid\n\n",
-		"comments":                 ": ping\n\ndata: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":null}}\n\n: goodbye\n\n",
+		"success":         "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"r\",\"status\":\"completed\",\"output\":[]}}\n\n",
+		"detailedFailure": "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"server_error\",\"message\":\"Original error\"}}}\n\n",
+		"invalidJSON":     "event: error\ndata: invalid\n\n",
+		"comments":        ": ping\n\n: goodbye\n\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			var out bytes.Buffer
@@ -97,6 +96,33 @@ func TestSSEOtherFramesRemainUnchanged(t *testing.T) {
 				t.Fatalf("changed stream:\n%s\nwant:\n%s", out.String(), source)
 			}
 		})
+	}
+}
+
+func TestSSEFailureWithoutDetails(t *testing.T) {
+	for _, detail := range []string{"null", "{}", `{"code":"server_error"}`} {
+		for _, suffix := range []string{"", "\n\n", "\n\ndata: [DONE]\n\n", "\n\n: ping\n\n", "\n\nevent: error\ndata: invalid\n\n"} {
+			source := `data: {"type":"response.failed","response":{"id":"r","status":"failed","output":[],"error":` + detail + `}}` + suffix
+			var out bytes.Buffer
+			var observed []object
+			if err := normalizeSSE(strings.NewReader(source), &out, func(v object) { observed = append(observed, v) }); err != nil {
+				t.Fatal(err)
+			}
+			if len(observed) != 1 || nested(observed[0], "response", "status") != "failed" ||
+				!strings.Contains(str(parseError(observed[0])["message"]), "without an error message") ||
+				str(parseError(observed[0])["code"]) == "" || strings.Contains(out.String(), "response.completed") {
+				t.Fatal("unexplained failure or false completion", out.String())
+			}
+			if detail == `{"code":"server_error"}` && parseError(observed[0])["code"] != "server_error" {
+				t.Fatal("original upstream code was lost")
+			}
+			if !strings.Contains(out.String(), str(parseError(observed[0])["message"])) {
+				t.Fatal("client did not receive diagnostic")
+			}
+			if !strings.HasSuffix(out.String(), "\n\n") {
+				t.Fatal("repaired failure must have a complete SSE frame", out.String())
+			}
+		}
 	}
 }
 
@@ -115,12 +141,17 @@ func TestSSEPendingFailurePreservesIOErrors(t *testing.T) {
 	source := "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":null}}\n\n"
 	var out bytes.Buffer
 	err := normalizeSSE(io.MultiReader(strings.NewReader(source), brokenStreamReader{}), &out, func(object) {})
-	if !errors.Is(err, io.ErrUnexpectedEOF) || out.String() != source {
+	if !errors.Is(err, io.ErrUnexpectedEOF) || !strings.Contains(out.String(), "without an error message") {
 		t.Fatal("lost pending failure or read error", err, out.String())
 	}
 	w := &brokenStreamWriter{}
 	err = normalizeSSE(strings.NewReader(source+"data: {\"type\":\"error\",\"code\":\"invalid_request_body\",\"message\":\"Failed\"}\n\n"), w, func(object) {})
 	if !errors.Is(err, io.ErrClosedPipe) || w.calls != 1 {
 		t.Fatal("lost or retried write error", err, w.calls)
+	}
+	w = &brokenStreamWriter{}
+	err = normalizeSSE(strings.NewReader(source+": ping\n\n"), w, func(object) {})
+	if !errors.Is(err, io.ErrClosedPipe) || w.calls != 1 {
+		t.Fatal("retried a failed keepalive write", err, w.calls)
 	}
 }

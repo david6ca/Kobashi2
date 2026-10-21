@@ -348,25 +348,37 @@ func releaseChecksums(path, name string) ([]string, error) {
 	})
 	return lines, err
 }
-func replaceApp(source, target string) error {
-	if _, err := os.Lstat(target); errors.Is(err, os.ErrNotExist) {
-		return replaceRelease(source, target)
-	} else if err != nil {
-		return err
-	}
+func replaceArtifact(source, target string, commit func() error) error {
 	backup, err := os.MkdirTemp(filepath.Dir(target), "."+filepath.Base(target)+"-*.old")
 	if err != nil {
 		return err
 	}
 	previous := filepath.Join(backup, filepath.Base(target))
-	if err = replaceRelease(target, previous); err != nil {
+	hadPrevious := false
+	if _, err = os.Lstat(target); err == nil {
+		if err = replaceRelease(target, previous); err != nil {
+			return errors.Join(err, os.Remove(backup))
+		}
+		hadPrevious = true
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return errors.Join(err, os.Remove(backup))
 	}
-	if err = replaceRelease(source, target); err != nil {
-		if rollbackErr := replaceRelease(previous, target); rollbackErr != nil {
-			return fmt.Errorf("replace app: %w; restore failed: %w; previous app kept at %s", err, rollbackErr, previous)
+	restore := func(cause error) error {
+		if hadPrevious {
+			if rollbackErr := replaceRelease(previous, target); rollbackErr != nil {
+				return fmt.Errorf("replace artifact: %w; restore failed: %w; previous artifact kept at %s", cause, rollbackErr, previous)
+			}
 		}
-		return errors.Join(err, os.Remove(backup))
+		return errors.Join(cause, os.Remove(backup))
+	}
+	if err = replaceRelease(source, target); err != nil {
+		return restore(err)
+	}
+	if err = commit(); err != nil {
+		if rollbackErr := replaceRelease(target, source); rollbackErr != nil {
+			return fmt.Errorf("commit artifact: %w; withdraw failed: %w; recovery directory kept at %s", err, rollbackErr, backup)
+		}
+		return restore(err)
 	}
 	return os.RemoveAll(backup)
 }
@@ -428,13 +440,14 @@ func publish(dir, built, name string) error {
 	if err = errors.Join(err, closeErr); err != nil {
 		return err
 	}
-	if info.IsDir() {
-		err = replaceApp(staged, filepath.Join(dir, name))
-	} else {
-		err = replaceRelease(staged, filepath.Join(dir, name))
-	}
+	err = replaceArtifact(staged, filepath.Join(dir, name), func() error {
+		if err := replaceRelease(sums.Name(), filepath.Join(dir, "SHA256SUMS.txt")); err != nil {
+			return fmt.Errorf("publish checksums: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
 		return fmt.Errorf("publish %s: %w; use -output to save elsewhere without stopping a running app", filepath.Join(dir, name), err)
 	}
-	return replaceRelease(sums.Name(), filepath.Join(dir, "SHA256SUMS.txt"))
+	return nil
 }

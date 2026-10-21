@@ -35,6 +35,15 @@ func (e sseEvent) data() (object, string) {
 	}
 	return v, name
 }
+func (e sseEvent) hasData() bool {
+	for _, line := range e.lines {
+		field, _, _ := strings.Cut(line, ":")
+		if field == "data" {
+			return true
+		}
+	}
+	return false
+}
 func (e sseEvent) withData(v object) sseEvent {
 	lines := []string{}
 	added := false
@@ -138,15 +147,37 @@ func normalizeSSE(r io.Reader, w io.Writer, onEvent func(object)) error {
 	write := func(e sseEvent) error {
 		event, name := e.data()
 		if event != nil {
-			if event["type"] == nil && name != "" {
+			changed := false
+			if str(event["type"]) == "" && name == "response.failed" {
+				event["type"] = name
+				changed = true
+			}
+			if event["type"] == "response.failed" && obj(event["response"]) != nil &&
+				str(parseError(event)["message"]) == "" {
+				response := obj(event["response"])
+				detail := clone(parseError(event))
+				if detail == nil {
+					detail = object{}
+				}
+				if str(detail["code"]) == "" {
+					detail["code"] = "upstream_error"
+				}
+				detail["message"] = "The upstream provider failed the response without an error message. See ~/.kobashi/kobashi.log for transport details."
+				response["error"] = detail
+				changed = true
+			}
+			if str(event["type"]) == "" && name != "" {
 				observed := clone(event)
 				observed["type"] = name
 				onEvent(observed)
 			} else {
 				onEvent(event)
 			}
-			if ids.normalize(event) {
+			if ids.normalize(event) || changed {
 				e = e.withData(event)
+				if e.separator == "" {
+					e.separator = "\n"
+				}
 			}
 		}
 		nl := e.separator
@@ -172,6 +203,14 @@ func normalizeSSE(r io.Reader, w io.Writer, onEvent func(object)) error {
 		if kind == "" {
 			kind = name
 		}
+		// Keepalives have no payload; flush them without losing the pending failure.
+		if pending != nil && !e.hasData() {
+			err := write(e)
+			if err != nil {
+				pending = nil
+			}
+			return err
+		}
 		if pending != nil {
 			failure := *pending
 			pending = nil
@@ -189,7 +228,7 @@ func normalizeSSE(r io.Reader, w io.Writer, onEvent func(object)) error {
 			}
 		}
 		// Copilot can send the failure details in the next error frame.
-		if kind == "response.failed" && obj(event["response"]) != nil && parseError(event) == nil {
+		if kind == "response.failed" && obj(event["response"]) != nil && str(parseError(event)["message"]) == "" {
 			pending = &e
 			return nil
 		}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -555,6 +556,55 @@ func TestCodexEncryptedAgentFailurePreservesRequest(t *testing.T) {
 		t.Fatal("missing or duplicated failure event", count)
 	}
 }
+func TestOpenAIEmptyStreamFailureIsActionableWithoutReplay(t *testing.T) {
+	for _, client := range []string{"Codex", "Copilot"} {
+		for _, withDetail := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/detail=%v", client, withDetail), func(t *testing.T) {
+				calls := 0
+				body := `{"model":"gpt-test","stream":true,"input":"hello"}`
+				a := testApp(t, func(r *http.Request) (*http.Response, error) {
+					calls++
+					data, err := io.ReadAll(r.Body)
+					if err != nil || string(data) != body {
+						t.Fatal("request changed", err)
+					}
+					stream := "event: response.failed\ndata: {\"response\":{\"id\":\"r\",\"status\":\"failed\",\"error\":null}}\n\n: ping\n\n"
+					if withDetail {
+						stream += "event: error\ndata: {\"code\":\"server_error\",\"message\":\"Original upstream failure\"}\n\n"
+					}
+					result := response(200, nil)
+					result.Header.Set("Content-Type", "text/event-stream")
+					result.Header.Set("Content-Length", "1")
+					result.Body = io.NopCloser(oneByteReader{strings.NewReader(stream)})
+					return result, nil
+				})
+				a.state = session{Token: "account", Codex: true, Copilot: true}
+				a.bearer = "valid"
+				a.expiry = float64(time.Now().Add(time.Hour).Unix())
+				a.models.sessionStarted = true
+				w := httptest.NewRecorder()
+				r := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(body))
+				if client == "Copilot" {
+					r.Header.Set("Authorization", "Bearer PROXY_MANAGED")
+					a.copilotApp(w, r)
+				} else {
+					a.codex(w, r)
+				}
+				if calls != 1 || w.Code != 200 || w.Header().Get("Content-Length") != "" {
+					t.Fatal("request replayed or invalid stream headers", calls, w.Code)
+				}
+				message := "without an error message"
+				if withDetail {
+					message = "Original upstream failure"
+				}
+				if !strings.Contains(w.Body.String(), message) || strings.Contains(w.Body.String(), "response.completed") {
+					t.Fatal("lost error detail or false completion", w.Body.String())
+				}
+			})
+		}
+	}
+}
+
 func TestSurgicalConfigAndClaudeRestorePreserveUserEdits(t *testing.T) {
 	a := testApp(t, nil)
 	base := "model_provider = \"openai\"\nnotify = [\"original\"]\n\n[plugins.custom]\nenabled = true\n"
