@@ -21,10 +21,13 @@ func main() {
 	destination := flag.String("output", "", "Directory for finished artifacts; default: dist")
 	testMac := flag.Bool("test-mac", false, "Run isolated Cocoa lifecycle checks on macOS")
 	testArtwork := flag.Bool("test-mac-artwork", false, "Run offscreen Cocoa artwork checks without opening windows")
+	testAccounts := flag.Bool("test-mac-accounts", false, "Run isolated Cocoa account-switcher checks")
 	smoke := flag.Bool("smoke", false, "Run the interactive isolated Cocoa smoke check")
 	flag.Parse()
 	var err error
-	if *testArtwork {
+	if *testAccounts {
+		err = checkMacHarness("macos-accounts.swift")
+	} else if *testArtwork {
 		err = checkMacHarness("macos-artwork.swift")
 	} else if *testMac {
 		err = checkMac(*smoke)

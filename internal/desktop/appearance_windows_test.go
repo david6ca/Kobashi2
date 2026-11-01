@@ -199,6 +199,88 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 			t.Fatal("Done offered sign-in before initialization completed")
 		}
 	})
+	t.Run("accounts popup and add cancellation", func(t *testing.T) {
+		originalStatus, originalView := w.status, w.view
+		defer func() {
+			w.closeAccounts()
+			w.status, w.view, w.addingAccount = originalStatus, originalView, false
+			w.render()
+		}()
+		accounts := []any{}
+		for i := range 12 {
+			accounts = append(accounts, map[string]any{"username": fmt.Sprintf("account-%d", i), "selected": i == 0})
+		}
+		w.status = map[string]any{"ready": true, "connected": true, "username": "account-0", "accounts": accounts}
+		w.view = "connected"
+		w.busy = true
+		w.render()
+		if proc("IsWindowEnabled", w.control(idAccounts)) == 0 {
+			t.Fatal("a pending bridge action must not block opening the saved account list")
+		}
+		count := len(w.controls)
+		if err := w.showAccounts(); err != nil {
+			t.Fatal(err)
+		}
+		if len(w.popupAccounts) != 12 || w.accountPopup == 0 || w.accountList == 0 ||
+			len(w.controls) != count+25 {
+			t.Fatal("popup does not expose every account with separate switch/remove buttons")
+		}
+		if proc("IsWindowEnabled", w.control(accountControlBase)) != 0 ||
+			proc("IsWindowEnabled", w.control(accountControlBase+1)) != 0 ||
+			proc("IsWindowEnabled", w.control(idAddAccount)) != 0 {
+			t.Fatal("account mutations must wait for the pending bridge action")
+		}
+		w.accountCommand(accountControlBase + 1)
+		w.command(idAddAccount)
+		if w.accountPopup == 0 || w.addingAccount {
+			t.Fatal("busy account commands must leave the popup and current operation alone")
+		}
+		w.busy = false
+		w.render()
+		if proc("IsWindowEnabled", w.control(accountControlBase)) == 0 ||
+			proc("IsWindowEnabled", w.control(accountControlBase+1)) == 0 ||
+			proc("IsWindowEnabled", w.control(idAddAccount)) == 0 {
+			t.Fatal("the open list must become actionable when the bridge finishes")
+		}
+		for i := range 12 {
+			for _, id := range []int{accountControlBase + i*2, accountControlBase + i*2 + 1} {
+				if proc("GetParent", w.control(id)) != w.accountList {
+					t.Fatal("account controls are not in the scrollable list")
+				}
+			}
+		}
+		w.scrollAccounts(10000)
+		if w.accountOffset != 216 {
+			t.Fatal("account scrolling is not clamped to the last full row")
+		}
+		w.scrollAccounts(0)
+		proc("SetFocus", w.control(accountControlBase))
+		if !w.accountKey(message{Message: 0x100, WParam: 9}) ||
+			proc("GetFocus") != w.control(accountControlBase+1) {
+			t.Fatal("Tab cannot focus the row's remove action")
+		}
+		if !w.accountKey(message{Message: 0x100, WParam: 27}) || w.accountPopup != 0 ||
+			proc("GetFocus") != w.control(idAccounts) || len(w.controls) != count {
+			t.Fatal("Escape must remove popup controls and restore trigger focus")
+		}
+		w.command(idAddAccount)
+		w.accept(event{path: "refresh", value: w.status})
+		if !w.addingAccount || w.view != "idle" || w.status["connected"] != true {
+			t.Fatal("polling interrupted Add account or disconnected the current account")
+		}
+		w.setText(idToken, "private-test-input")
+		w.command(idCancelAccount)
+		if w.addingAccount || w.view != "connected" || w.tokenValue() != "" ||
+			proc("GetFocus") != w.control(idAccounts) {
+			t.Fatal("Cancel must retain the connection, clear token input, and restore focus")
+		}
+		w.status["connected"] = false
+		w.view = "token"
+		w.render()
+		if proc("GetWindowLongW", w.control(idAccounts), ^uintptr(15))&0x10000000 == 0 {
+			t.Fatal("saved accounts are unreachable after token-based disconnect")
+		}
+	})
 	for id, want := range map[int]string{idClaude: "Claude", idCodex: "Codex", idCopilot: "Copilot"} {
 		for _, c := range w.controls {
 			if c.id == id && strings.ReplaceAll(c.title, "&", "") != want {
@@ -479,7 +561,8 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 		idSettings: {336, 24, 368, 56},
 		idClaude:   {40, 184, 360, 228}, idCodex: {40, 228, 360, 272},
 		idCopilot:    {40, 272, 360, 316},
-		idDisconnect: {255, 87, 349, 115},
+		idDisconnect: {237, 87, 321, 115},
+		idAccounts:   {321, 87, 349, 115},
 		idStartup:    {32, 114, 368, 144}, idTray: {32, 162, 368, 192},
 		idAppearanceLabel: {40, 214, 172, 238},
 		idDone:            {32, 290, 368, 322}, idProject: {252, 338, 368, 362},

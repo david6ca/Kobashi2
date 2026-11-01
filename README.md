@@ -39,6 +39,13 @@ location and update an enabled login item's app path without launching both.
 
 The Go bridge intercepts API requests on localhost and forwards them to the GitHub Copilot API using your Copilot token. It manages token refresh, config injection, cleanup, and Anthropic↔OpenAI format translation automatically. The application uses only native code and operating-system libraries. GitHub device authorization opens your default browser; token sign-in stays in the native window.
 
+If account or Copilot access verification times out after browser authorization,
+keep the sign-in window open. Kobashi2 retries verification using the token
+already received, without redeeming the device code again. The temporary token
+is reused for at most 15 minutes and is not saved until verification
+succeeds. Starting another sign-in discards it. Errors identify which verification
+step failed; persistent network failures still require a working connection or proxy.
+
 ### Startup and window behavior
 
 The window shows **Starting...** until the local bridge has restored its saved
@@ -66,6 +73,29 @@ Open **Settings** from the main window to change these options:
   in the main header. The login and tray options use label-only rows.
 
 Click the Settings icon again or **Done** to return to the main screen.
+
+### Multiple accounts
+
+Open the arrow beside **Connected** to see saved GitHub accounts. The current
+account has a green check. Click an account to switch; hover a row to reveal its
+**X** remove button. Keyboard focus also reveals the remove button. **Add account**
+appears below a divider and opens GitHub sign-in or access-token entry without
+disconnecting the current account. Cancel leaves that connection unchanged.
+Signing in again to the same username updates its saved credential, not the list
+count. Switching accounts preserves the Claude, Codex, and Copilot toggles.
+Opening the saved-account list is local and remains available while a bridge
+operation is running. Switching, removing, and adding accounts wait until that
+operation finishes; the open list then becomes actionable without reopening it.
+
+The main **Connected** button still disconnects, but keeps saved accounts.
+Use **Accounts** on the sign-in screen to reconnect. Removing the current account
+disconnects without automatically selecting another account; if Copilot cannot
+safely restore dependent sessions, removal is blocked and the connection stays
+enabled. Removing another account does not affect the current connection.
+Accounts and the current selection are stored in `~/.kobashi/session.json`
+with private file permissions. Existing single-account logins migrate in place.
+
+### Window and startup behavior
 
 Login startup runs in the tray when close to tray is enabled; otherwise it opens
 the window. Settings are saved in `~/.kobashi/settings.json` independently of your
@@ -464,6 +494,8 @@ Run `go run ./cmd/build -test-mac-artwork` for offscreen brand-artwork checks
 without opening any windows. These compare tinted and original image orientation
 in light and dark appearances, using both flipped and unflipped drawing coordinates.
 The full native suite includes these checks before opening its test windows.
+Run `go run ./cmd/build -test-mac-accounts` for the isolated account dropdown,
+switch/remove hit targets, add/cancel flow, focus restoration, and scrolling checks.
 
 Native window checks first cover startup connection retries, saved-login readiness,
 polling error recovery, and visible real failures using an isolated URL session.

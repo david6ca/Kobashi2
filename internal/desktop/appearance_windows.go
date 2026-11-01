@@ -117,8 +117,19 @@ func (w *Window) layout() {
 	}
 	for i := range w.controls {
 		c := &w.controls[i]
+		if c.view == "account-popup" {
+			continue
+		}
 		c.y = c.baseY
-		if c.id == idConnect {
+		if c.id == idAccounts {
+			c.x, c.y, c.w = 321, 87, 28
+			if w.view != "connected" {
+				c.x, c.y, c.w = 140, 112, 120
+				if w.view == "token" {
+					c.y = 60
+				}
+			}
+		} else if c.id == idConnect {
 			c.y = 160
 			if w.view == "token" {
 				c.y = 94
@@ -391,6 +402,31 @@ func (w *Window) paintControl(c control, dc uintptr) {
 			fg = colors.muted
 		}
 		switch c.id {
+		case idDisconnect, idAccounts:
+			if w.view == "connected" {
+				// Clip the common outline to each half of the split button.
+				x := 0
+				if c.id == idAccounts {
+					x = -84
+				}
+				p.round(x, 0, 112, 28, 8, colors.panel, colors.border)
+				if c.hover {
+					fill, border := colors.hover, colors.hover
+					if c.id == idDisconnect {
+						fill, border = colors.panel, colors.connected
+					}
+					p.round(2, 2, c.w-4, c.h-4, 5, fill, border)
+				}
+				if c.id == idAccounts {
+					p.line(0, 5, 0, 23, 1, colors.border)
+					p.line(9, 12, 14, 17, 1, colors.muted)
+					p.line(14, 17, 19, 12, 1, colors.muted)
+				} else {
+					p.text(title, 2, 0, c.w-4, c.h, w.small, colors.connected, 0x25)
+				}
+			} else {
+				p.text(title, 0, 0, c.w, c.h, w.small, colors.accent, 0x825)
+			}
 		case 1:
 			p.line(10, 14, 22, 14, 3, colors.accent)
 			p.round(6, 10, 8, 8, 4, colors.accent, colors.accent)
@@ -479,6 +515,10 @@ func (w *Window) paintControl(c control, dc uintptr) {
 			}
 			p.text(title, 0, 0, c.w, c.h, w.small, rgb, flags)
 		default:
+			if c.id >= accountControlBase {
+				w.paintAccountControl(p, c)
+				break
+			}
 			fill, border, font := colors.button, colors.border, w.bold
 			if c.hover || proc("SendMessageW", c.handle, 0xf2, 0, 0)&4 != 0 {
 				fill, border = colors.hover, colors.accent
@@ -571,10 +611,12 @@ func controlProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 						track.Size = uint32(unsafe.Sizeof(track))
 						proc("TrackMouseEvent", uintptr(unsafe.Pointer(&track)))
 						proc("InvalidateRect", hwnd, 0, 0)
+						w.redrawAccountRow(c.id)
 					}
 				case 0x2a3:
 					c.hover = false
 					proc("InvalidateRect", hwnd, 0, 0)
+					w.redrawAccountRow(c.id)
 				}
 			}
 			previous := c.previous
@@ -584,6 +626,7 @@ func controlProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 			}
 			if msg == 7 || msg == 8 || msg == 0xf1 || msg == 0xf3 || msg == 0x128 {
 				proc("InvalidateRect", hwnd, 0, 0)
+				w.redrawAccountRow(c.id)
 				if hwnd == w.control(idToken) {
 					proc("InvalidateRect", w.Handle, 0, 0)
 				}

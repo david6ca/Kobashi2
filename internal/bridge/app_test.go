@@ -362,6 +362,116 @@ func TestFailedTokenPastePreservesWorkingAccount(t *testing.T) {
 		t.Fatal("failed paste changed session")
 	}
 }
+
+func TestDeviceLoginRetriesVerificationWithoutRedeemingCodeAgain(t *testing.T) {
+	for _, stage := range []string{"/user", "/copilot_internal/v2/token"} {
+		t.Run(stage, func(t *testing.T) {
+			exchanges, failures := 0, 0
+			a := testApp(t, func(r *http.Request) (*http.Response, error) {
+				if r.URL.Path == "/login/oauth/access_token" {
+					exchanges++
+					if exchanges > 1 {
+						return response(200, object{"error": "expired_token"}), nil
+					}
+					return response(200, object{"access_token": "candidate"}), nil
+				}
+				if r.Header.Get("Authorization") != "token candidate" {
+					t.Fatal("verification used the wrong credential")
+				}
+				if r.URL.Path == stage && failures == 0 {
+					failures++
+					return nil, context.DeadlineExceeded
+				}
+				switch r.URL.Path {
+				case "/user":
+					return response(200, object{"login": "new-user"}), nil
+				case "/copilot_internal/v2/token":
+					return response(200, object{"token": "bearer", "expires_at": time.Now().Add(time.Hour).Unix()}), nil
+				default:
+					t.Fatalf("unexpected request: %s", r.URL.Path)
+					return nil, errors.New("unexpected request")
+				}
+			})
+			a.state = session{Token: "working-account", Username: "working-user"}
+			if err := a.saveSession(); err != nil {
+				t.Fatal(err)
+			}
+			body := object{"device_code": "device-code"}
+			first := controlCall(a, "/api/poll", body)
+			if first.Code != 400 || !strings.Contains(first.Body.String(), "verification failed") ||
+				!strings.Contains(first.Body.String(), "context deadline exceeded") {
+				t.Fatal("missing actionable verification failure", first.Body.String())
+			}
+			if a.snapshot().Token != "working-account" || a.pendingLogin.token != "candidate" {
+				t.Fatal("failed verification changed the account or lost the redeemed token")
+			}
+			saved, err := os.ReadFile(a.path("session.json"))
+			if err != nil || strings.Contains(string(saved), "candidate") {
+				t.Fatal("unverified token was saved", err)
+			}
+			status := controlCall(a, "/api/status", nil)
+			if strings.Contains(status.Body.String(), "candidate") || strings.Contains(first.Body.String(), "candidate") {
+				t.Fatal("temporary credential leaked through the control API")
+			}
+			second := controlCall(a, "/api/poll", body)
+			if second.Code != 200 || !strings.Contains(second.Body.String(), `"ok":true`) || exchanges != 1 {
+				t.Fatal("verification retry redeemed the code again or failed", second.Body.String(), exchanges)
+			}
+			if a.snapshot().Token != "candidate" || a.snapshot().Username != "new-user" ||
+				a.pendingLogin != (deviceLogin{}) || a.lastError != "" {
+				t.Fatal("successful retry did not finish sign-in")
+			}
+		})
+	}
+}
+
+func TestDeviceLoginDoesNotReuseExpiredOrDifferentCodeCredentials(t *testing.T) {
+	for _, expired := range []bool{false, true} {
+		t.Run(fmt.Sprint(expired), func(t *testing.T) {
+			exchanges := 0
+			a := testApp(t, func(r *http.Request) (*http.Response, error) {
+				if r.URL.Path != "/login/oauth/access_token" {
+					t.Fatal("stale token was used for verification")
+				}
+				exchanges++
+				return response(200, object{"error": "authorization_pending"}), nil
+			})
+			code, expiry := "different-code", time.Now().Add(time.Minute)
+			if expired {
+				code, expiry = "original-code", time.Now().Add(-time.Second)
+			}
+			a.pendingLogin = deviceLogin{code: "original-code", token: "stale-token", expires: expiry}
+			result := controlCall(a, "/api/poll", object{"device_code": code})
+			reason, wantExchanges := "authorization_pending", 1
+			if expired {
+				reason, wantExchanges = "expired_token", 0
+			}
+			if result.Code != 200 || !strings.Contains(result.Body.String(), reason) ||
+				exchanges != wantExchanges || a.pendingLogin != (deviceLogin{}) {
+				t.Fatal("stale sign-in was not discarded", result.Body.String(), exchanges)
+			}
+		})
+	}
+}
+
+func TestDeviceLoginClearsTemporaryCredentialOnTerminalVerification(t *testing.T) {
+	for _, status := range []int{401, 403} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			a := testApp(t, func(r *http.Request) (*http.Response, error) {
+				if r.URL.Path == "/user" && status == 403 {
+					return response(200, object{"login": "no-access"}), nil
+				}
+				return response(status, object{}), nil
+			})
+			a.pendingLogin = deviceLogin{code: "code", token: "candidate", expires: time.Now().Add(time.Minute)}
+			result := controlCall(a, "/api/poll", object{"device_code": "code"})
+			if result.Code != 200 || a.pendingLogin != (deviceLogin{}) || a.snapshot().active() {
+				t.Fatal("terminal sign-in failure retained an unverified credential", result.Body.String())
+			}
+		})
+	}
+}
+
 func TestLoginUsesSupportedGitHubAPIVersion(t *testing.T) {
 	for _, method := range []string{"device", "token"} {
 		t.Run(method, func(t *testing.T) {

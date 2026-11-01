@@ -36,14 +36,20 @@ type Settings struct {
 	CloseToTray  bool `json:"closeToTray"`
 }
 type session struct {
-	Token    string `json:"github_token"`
-	Username string `json:"username"`
-	Codex    bool   `json:"codexEnabled"`
-	Claude   bool   `json:"claudeEnabled"`
-	Copilot  bool   `json:"copilotEnabled"`
-	Method   string `json:"authMethod"`
+	Token    string    `json:"github_token"`
+	Username string    `json:"username"`
+	Codex    bool      `json:"codexEnabled"`
+	Claude   bool      `json:"claudeEnabled"`
+	Copilot  bool      `json:"copilotEnabled"`
+	Method   string    `json:"authMethod"`
+	Accounts []account `json:"accounts,omitempty"`
 	// RemoteURL   string `json:"remoteURL,omitempty"`
 	// RemoteToken string `json:"remoteToken,omitempty"`
+}
+
+type deviceLogin struct {
+	code, token string
+	expires     time.Time
 }
 
 func (s session) active() bool {
@@ -56,6 +62,7 @@ type App struct {
 	mu                            sync.RWMutex
 	actions, tokenMu, discoveryMu sync.Mutex
 	state                         session
+	pendingLogin                  deviceLogin
 	ready                         bool
 	bearer                        string
 	expiry                        float64
@@ -249,6 +256,10 @@ func (a *App) initialize() {
 		a.report(err)
 		return
 	}
+	saved.Accounts = savedAccounts(saved)
+	a.mu.Lock()
+	a.state = saved
+	a.mu.Unlock()
 	if !saved.active() {
 		return
 	}
@@ -376,6 +387,9 @@ func (a *App) Stop() error {
 func (a *App) snapshot() session  { a.mu.RLock(); defer a.mu.RUnlock(); return a.state }
 func (a *App) saveSession() error { return writeJSON(a.path("session.json"), a.snapshot()) }
 func (a *App) disconnect() error {
+	return a.disconnectAccounts(savedAccounts(a.snapshot()))
+}
+func (a *App) disconnectAccounts(accounts []account) error {
 	state := a.snapshot()
 	var err error
 	if state.Copilot {
@@ -405,8 +419,17 @@ func (a *App) disconnect() error {
 		}
 		a.stopShared()
 	*/
+	next := session{Method: state.Method, Accounts: accounts}
+	if len(accounts) > 0 {
+		err = writeJSON(a.path("session.json"), next)
+	} else {
+		err = removeOptional(a.path("session.json"))
+	}
+	if err != nil {
+		return err
+	}
 	a.mu.Lock()
-	a.state = session{Method: state.Method}
+	a.state = next
 	a.bearer = ""
 	a.expiry = 0
 	a.rawModels = nil
@@ -415,7 +438,7 @@ func (a *App) disconnect() error {
 	a.accountGeneration++
 	a.mu.Unlock()
 	a.models.setAccount("")
-	return errors.Join(removeOptional(a.path("session.json")), removeOptional(filepath.Join(a.options.Home, ".codex", "ccb-session.json")))
+	return removeOptional(filepath.Join(a.options.Home, ".codex", "ccb-session.json"))
 }
 func headers(token string) http.Header {
 	h := http.Header{"Content-Type": {"application/json"}, "Accept": {"application/json"}, "User-Agent": {"GitHubCopilotChat/0.38.2"},
@@ -519,7 +542,7 @@ func (a *App) validateToken(ctx context.Context, token, method string) (object, 
 	defer cancel()
 	status, who, err := a.github(bounded, "/user", token)
 	if err != nil {
-		return object{"ok": false, "reason": "network"}, err
+		return object{"ok": false, "reason": "network"}, fmt.Errorf("GitHub account verification failed: %w", err)
 	}
 	if status == 401 {
 		return object{"ok": false, "reason": "invalid_token"}, nil
@@ -529,7 +552,7 @@ func (a *App) validateToken(ctx context.Context, token, method string) (object, 
 	}
 	status, value, err := a.github(bounded, "/copilot_internal/v2/token", token)
 	if err != nil {
-		return object{"ok": false, "reason": "network"}, err
+		return object{"ok": false, "reason": "network"}, fmt.Errorf("Copilot access verification failed: %w", err)
 	}
 	if status == 401 || status == 403 {
 		return object{"ok": false, "reason": "no_copilot", "login": who["login"]}, nil
@@ -537,26 +560,36 @@ func (a *App) validateToken(ctx context.Context, token, method string) (object, 
 	if status != 200 || str(value["token"]) == "" {
 		return object{"ok": false, "reason": "github_error"}, fmt.Errorf("Copilot returned %d", status)
 	}
+	previous := a.snapshot()
+	next := previous
+	next.Token, next.Username, next.Method = token, str(who["login"]), method
+	if !previous.active() {
+		next.Codex, next.Claude = true, true
+	}
+	next.Accounts = upsertAccount(savedAccounts(previous), account{Token: token, Username: next.Username, Method: method})
+	if err = writeJSON(a.path("session.json"), next); err != nil {
+		return nil, err
+	}
 	a.models.pause()
 	a.mu.Lock()
-	a.state = session{Token: token, Username: str(who["login"]), Codex: true, Claude: true, Method: method}
+	a.state = next
 	a.bearer = str(value["token"])
 	a.expiry = number(value["expires_at"])
 	a.rawModels = nil
 	a.rawAt = time.Time{}
 	a.usage = nil
 	a.usageAt = time.Time{}
+	a.lastEffort = nil
 	a.accountGeneration++
 	a.mu.Unlock()
 	a.models.setAccount(token)
-	if err = a.saveSession(); err != nil {
-		return nil, err
-	}
-	if err = a.injectCodex(); err != nil {
-		return nil, err
-	}
-	if err = a.injectClaude(); err != nil {
-		return nil, err
+	if !previous.active() {
+		if err = a.injectCodex(); err != nil {
+			return nil, err
+		}
+		if err = a.injectClaude(); err != nil {
+			return nil, err
+		}
 	}
 	return object{"ok": true, "username": who["login"]}, nil
 }
@@ -591,6 +624,7 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 			status := object{"ready": a.ready, "connected": s.active(), "username": s.Username, "authMethod": s.Method, "codexEnabled": s.Codex, "claudeEnabled": s.Claude,
 				"copilotEnabled": s.Copilot, "copilotURL": a.CopilotURL(),
 				"version": a.options.Version, "error": a.lastError, "lastEffort": a.lastEffort, "usage": a.usage, "appearance": a.appearance}
+			status["accounts"] = publicAccounts(s)
 			// status["remoteURL"] = s.RemoteURL
 			// status["server"] = object{"enabled": a.shared.Enabled, "running": a.sharedServer != nil, "listen": a.shared.Listen}
 			a.mu.RUnlock()
@@ -629,6 +663,21 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 	var result any = object{"ok": true}
 	var err error
 	switch r.URL.Path {
+	case "/api/accounts/switch", "/api/accounts/delete":
+		var body object
+		body, err = readObject(r.Body, 4096)
+		if err == nil {
+			username := str(body["username"])
+			if r.URL.Path == "/api/accounts/switch" {
+				result, err = a.switchAccount(r.Context(), username)
+			} else {
+				err = a.deleteAccount(username)
+				if err == nil {
+					state := a.snapshot()
+					result = object{"ok": true, "connected": state.active(), "username": state.Username, "accounts": publicAccounts(state)}
+				}
+			}
+		}
 	/*
 		case "/api/server":
 			var body object
@@ -675,6 +724,7 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 		}
 		result = a.Settings()
 	case "/api/token-login":
+		a.pendingLogin = deviceLogin{}
 		var body object
 		body, err = readObject(r.Body, 8192)
 		if err == nil {
@@ -686,19 +736,13 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	case "/api/start":
+		a.pendingLogin = deviceLogin{}
 		result, err = a.device(r.Context(), "/login/device/code", "client_id=Iv1.b507a08c87ecfe98&scope=read%3Auser")
 	case "/api/poll":
-		var body, value object
+		var body object
 		body, err = readObject(r.Body, 8192)
 		if err == nil {
-			value, err = a.device(r.Context(), "/login/oauth/access_token", "client_id=Iv1.b507a08c87ecfe98&device_code="+urlEncode(str(body["device_code"]))+"&grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code")
-		}
-		if err == nil {
-			if token := str(value["access_token"]); token != "" {
-				result, err = a.validateToken(r.Context(), token, "device")
-			} else {
-				result = object{"pending": true, "error": value["error"]}
-			}
+			result, err = a.pollLogin(r.Context(), str(body["device_code"]))
 		}
 	case "/api/toggle-copilot":
 		state := a.snapshot()
@@ -767,6 +811,7 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 		}
 		result = object{"codexEnabled": a.snapshot().Codex, "claudeEnabled": a.snapshot().Claude, "copilotEnabled": a.snapshot().Copilot}
 	case "/api/disconnect":
+		a.pendingLogin = deviceLogin{}
 		err = a.disconnect()
 	default:
 		respond(w, 404, object{"error": "Not found"})
@@ -782,6 +827,37 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 	a.mu.Unlock()
 	respond(w, 200, result)
 }
+
+// Called under actions: retain a redeemed token across transient verification failures.
+func (a *App) pollLogin(ctx context.Context, code string) (object, error) {
+	if code == "" {
+		return nil, errors.New("GitHub device code is required")
+	}
+	if a.pendingLogin.code != code {
+		a.pendingLogin = deviceLogin{}
+	}
+	if a.pendingLogin.token != "" && !time.Now().Before(a.pendingLogin.expires) {
+		a.pendingLogin = deviceLogin{}
+		return object{"pending": true, "error": "expired_token"}, nil
+	}
+	if a.pendingLogin.token == "" {
+		value, err := a.device(ctx, "/login/oauth/access_token", "client_id=Iv1.b507a08c87ecfe98&device_code="+urlEncode(code)+"&grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code")
+		if err != nil {
+			return nil, err
+		}
+		token := str(value["access_token"])
+		if token == "" {
+			return object{"pending": true, "error": value["error"]}, nil
+		}
+		a.pendingLogin = deviceLogin{code: code, token: token, expires: time.Now().Add(15 * time.Minute)}
+	}
+	result, err := a.validateToken(ctx, a.pendingLogin.token, "device")
+	if err == nil {
+		a.pendingLogin = deviceLogin{}
+	}
+	return result, err
+}
+
 func (a *App) device(ctx context.Context, path, body string) (object, error) {
 	bounded, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()

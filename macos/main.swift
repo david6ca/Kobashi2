@@ -113,6 +113,7 @@ final class FlippedView: NSView {
         switch owner.currentView {
         case "connected":
             rounded(NSRect(x: 32, y: 72, width: 336, height: 90), radius: 12, fill: c.panel, border: c.border)
+            rounded(NSRect(x: 237, y: 87, width: 112, height: 28), radius: 8, fill: c.panel, border: c.border)
             rounded(NSRect(x: 32, y: 178, width: 336, height: 162), radius: 12, fill: c.panel, border: c.border)
             let account = owner.status["username"] as? String ?? ""
             let width = min(175, ("@\(account)" as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13)]).width + 38)
@@ -171,9 +172,26 @@ final class NativeButton: NSButton {
             showsKeyboardFocus = true
         }
         needsDisplay = true
+        (superview as? AccountRow)?.redraw()
         return super.becomeFirstResponder()
     }
-    override func resignFirstResponder() -> Bool { needsDisplay = true; return super.resignFirstResponder() }
+    override func resignFirstResponder() -> Bool {
+        let result = super.resignFirstResponder()
+        needsDisplay = true
+        (superview as? AccountRow)?.redraw()
+        return result
+    }
+    override func keyDown(with event: NSEvent) {
+        if ["accountChoice", "accountRemove", "accountAdd"].contains(key), event.keyCode == 36 {
+            performClick(nil)
+            return
+        }
+        if let row = superview as? AccountRow, [125, 126].contains(event.keyCode) {
+            row.moveFocus(event.keyCode == 125 ? 1 : -1)
+            return
+        }
+        super.keyDown(with: event)
+    }
     override func mouseDown(with event: NSEvent) {
         showsKeyboardFocus = false
         needsDisplay = true
@@ -193,6 +211,59 @@ final class NativeButton: NSButton {
         let fg = isEnabled ? c.text : c.muted
         let font = NSFont.systemFont(ofSize: 14, weight: .semibold)
         switch key {
+        case "accountChoice", "accountRemove":
+            if let row = superview as? AccountRow {
+                let focused = window?.firstResponder === self
+                (row.highlighted ? c.hover : c.panel).setFill()
+                bounds.fill()
+                if key == "accountChoice" {
+                    if row.selected {
+                        let tick = NSBezierPath()
+                        tick.move(to: NSPoint(x: 9, y: 18))
+                        tick.line(to: NSPoint(x: 13, y: 22))
+                        tick.line(to: NSPoint(x: 20, y: 13))
+                        tick.lineWidth = 2
+                        c.connected.setStroke()
+                        tick.stroke()
+                    }
+                    nativeText(title, in: NSRect(x: 30, y: 9, width: bounds.width - 34, height: 22),
+                               font: .systemFont(ofSize: 13), color: fg)
+                } else if row.highlighted || focused {
+                    let cross = NSBezierPath()
+                    cross.move(to: NSPoint(x: 13, y: 13))
+                    cross.line(to: NSPoint(x: 21, y: 21))
+                    cross.move(to: NSPoint(x: 21, y: 13))
+                    cross.line(to: NSPoint(x: 13, y: 21))
+                    cross.lineWidth = 1.5
+                    c.muted.setStroke()
+                    cross.stroke()
+                }
+            }
+        case "disconnect", "accounts":
+            if owner?.currentView == "connected" {
+                if hover || isHighlighted {
+                    rounded(bounds.insetBy(dx: 2, dy: 2), radius: 5,
+                            fill: key == "disconnect" ? c.panel : c.hover,
+                            border: key == "disconnect" ? c.connected : c.hover)
+                }
+                if key == "accounts" {
+                    c.border.setFill()
+                    NSRect(x: 0, y: 5, width: 1, height: 18).fill()
+                    let chevron = NSBezierPath()
+                    chevron.move(to: NSPoint(x: 9, y: 12))
+                    chevron.line(to: NSPoint(x: 14, y: 17))
+                    chevron.line(to: NSPoint(x: 19, y: 12))
+                    chevron.lineWidth = 1.5
+                    c.muted.setStroke()
+                    chevron.stroke()
+                } else {
+                    nativeText(title, in: NSRect(x: 2, y: 6, width: bounds.width - 4, height: 22),
+                               font: .systemFont(ofSize: 12), color: c.connected, alignment: .center)
+                }
+            } else {
+                nativeText(title, in: NSRect(x: 0, y: 6, width: bounds.width, height: 22),
+                           font: .systemFont(ofSize: 12), color: c.accent, alignment: .center)
+            }
         case "claude", "codex", "copilot":
             c.panel.setFill()
             bounds.fill()
@@ -267,7 +338,79 @@ final class NativeButton: NSButton {
     }
 }
 
-class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFieldDelegate {
+final class AccountListView: NSView {
+    var onCancel: (() -> Void)?
+    override var acceptsFirstResponder: Bool { true }
+    override var isFlipped: Bool { true }
+    override func cancelOperation(_ sender: Any?) {
+        onCancel?()
+    }
+    override func draw(_ dirtyRect: NSRect) {
+        NativeColors.current.panel.setFill()
+        bounds.fill()
+    }
+}
+
+final class AccountRow: NSView {
+    weak var owner: AppDelegate?
+    let username: String
+    let selected: Bool
+    let choose = NativeButton()
+    let remove = NativeButton()
+    var hovering = false
+    var area: NSTrackingArea?
+    override var isFlipped: Bool { true }
+    var highlighted: Bool {
+        hovering || window?.firstResponder === choose || window?.firstResponder === remove
+    }
+    init(username: String, selected: Bool, owner: AppDelegate, y: CGFloat) {
+        self.username = username
+        self.selected = selected
+        self.owner = owner
+        super.init(frame: NSRect(x: 0, y: y, width: 264, height: 36))
+        for (button, key, label, frame, action) in [
+            (choose, "accountChoice", "@\(username)", NSRect(x: 0, y: 0, width: 228, height: 36), #selector(selectAccount)),
+            (remove, "accountRemove", "Remove @\(username)", NSRect(x: 228, y: 0, width: 36, height: 36), #selector(removeAccount))
+        ] {
+            button.key = key
+            button.title = label
+            button.frame = frame
+            button.isBordered = false
+            button.focusRingType = .none
+            button.target = self
+            button.action = action
+            button.setAccessibilityLabel(label)
+            button.toolTip = label
+            addSubview(button)
+        }
+        choose.setAccessibilityHelp(selected ? "Current account" : "Switch to this account")
+        choose.setAccessibilityValue(selected ? "Selected" : "Not selected")
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let area { removeTrackingArea(area) }
+        let next = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                                 owner: self, userInfo: nil)
+        area = next
+        addTrackingArea(next)
+    }
+    override func mouseEntered(with event: NSEvent) { hovering = true; redraw() }
+    override func mouseExited(with event: NSEvent) { hovering = false; redraw() }
+    func redraw() { choose.needsDisplay = true; remove.needsDisplay = true }
+    func moveFocus(_ offset: Int) {
+        guard let rows = superview?.subviews.compactMap({ $0 as? AccountRow }),
+              let index = rows.firstIndex(where: { $0 === self }) else { return }
+        let next = rows[(index + offset + rows.count) % rows.count]
+        next.scrollToVisible(next.bounds)
+        window?.makeFirstResponder(next.choose)
+        next.choose.showsKeyboardFocus = true
+    }
+    @objc func selectAccount() { owner?.accountAction("/api/accounts/switch", username) }
+    @objc func removeAccount() { owner?.accountAction("/api/accounts/delete", username) }
+}
+
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFieldDelegate, NSPopoverDelegate {
     var window: NSWindow!
     var serverProcess: Process?
     var serverInput: Pipe?
@@ -286,6 +429,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
     var nextPoll = Date.distantFuture
     var expires = Date.distantFuture
     var busy = false
+    var addingAccount = false
+    var accountPopover: NSPopover?
     var pendingBridge: String?
     var refreshing = false
     var terminating = false
@@ -475,7 +620,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         add(code, key: "code", group: "device", y: 206, height: 42, x: 53, width: 294)
         button("Copy", key: "copy", group: "device", y: 253, action: #selector(copyCode), x: 166, width: 68, height: 24)
         label("", key: "account", group: "connected", y: 92, height: 22, x: 77, width: 140, size: 13)
-        button("Connected", key: "disconnect", group: "connected", y: 87, action: #selector(disconnect), x: 255, width: 94, height: 28)
+        button("Connected", key: "disconnect", group: "connected", y: 87, action: #selector(disconnect), x: 237, width: 84, height: 28)
+        button("Accounts", key: "accounts", group: "all", y: 87, action: #selector(showAccounts), x: 321, width: 28, height: 28)
+        (controls["accounts"] as? NSButton)?.setAccessibilityLabel("Accounts")
+        button("Cancel", key: "cancelAccount", group: "all", y: 70, action: #selector(cancelAddAccount), x: 32, width: 76, height: 28)
+        (controls["cancelAccount"] as? NSButton)?.keyEquivalent = "\u{1b}"
         label("AI credits this cycle", key: "usageLabel", group: "connected", y: 128, height: 16, x: 50, width: 170, size: 11)
         label("", key: "usageValue", group: "connected", y: 128, height: 16, x: 220, width: 129, size: 11)
         (controls["usageValue"] as? NSTextField)?.alignment = .right
@@ -637,7 +786,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
                 } else if self.currentView == "starting" {
                     self.currentView = value["connected"] as? Bool == true ? "connected" : "idle"
                 }
-                if self.bridgeReady, self.currentView != "settings", value["connected"] as? Bool == true { self.currentView = "connected" }
+                if self.bridgeReady, !self.addingAccount, self.currentView != "settings", value["connected"] as? Bool == true { self.currentView = "connected" }
                 // !["settings", "client", "server"].contains(self.currentView)
                 if self.bridgeReady, self.currentView == "connected", value["connected"] as? Bool != true { self.currentView = "idle" }
             }
@@ -692,12 +841,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
                         self.openGitHub()
                         self.actionFocus = self.controls["copy"]
                     } else { self.notice = "GitHub did not return a device code." }
-                case "/api/token-login", "/api/poll":
+                case "/api/token-login", "/api/poll", "/api/accounts/switch":
                     if value["ok"] as? Bool == true {
+                        self.addingAccount = false
                         self.deviceCode = ""
                         (self.controls["token"] as? NSSecureTextField)?.stringValue = ""
                         self.currentView = "connected"
-                        self.actionFocus = self.controls["claude"]
+                        self.actionFocus = self.controls["accounts"]
                         self.refresh()
                     } else if value["pending"] as? Bool == true {
                         let reason = value["error"] as? String ?? ""
@@ -752,6 +902,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
                     self.actionFocus = self.controls["connect"]
                     if self.currentView == "token" { self.actionFocus = self.controls["token"] }
                     self.status["connected"] = false
+                    self.refresh()
+                case "/api/accounts/delete":
+                    for key in ["connected", "username", "accounts"] { self.status[key] = value[key] }
+                    let accounts = value["accounts"] as? [[String: Any]] ?? []
+                    self.currentView = value["connected"] as? Bool == true ? "connected" : "idle"
+                    self.actionFocus = self.controls[accounts.isEmpty ? "connect" : "accounts"]
                     self.refresh()
                 case "/api/appearance": self.status["appearance"] = value["appearance"]
                 default: self.refresh()
@@ -846,6 +1002,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
                 if let button = view as? NSButton, view !== controls["done"] {
                     button.isEnabled = !busy && (currentView != "starting" || view === controls["project"])
                 }
+                let accounts = status["accounts"] as? [[String: Any]] ?? []
+                controls["accounts"]?.isHidden = currentView != "connected" && !(["idle", "token"].contains(currentView) && !addingAccount && !accounts.isEmpty)
+                controls["accounts"]?.frame = currentView == "connected"
+                    ? NSRect(x: 321, y: 87, width: 28, height: 28)
+                    : NSRect(x: 140, y: 112, width: 120, height: 28)
+        (controls["accounts"] as? NSButton)?.isEnabled = !terminating && currentView != "starting"
+        updateAccountControls()
+                controls["cancelAccount"]?.isHidden = !addingAccount || currentView == "settings"
                 if let field = view as? NSTextField { field.textColor = colors.muted }
                 view.needsDisplay = true
             }
@@ -939,6 +1103,101 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
     @objc func toggleClaude() { action("/api/toggle-claude") }
     @objc func toggleCopilot() { action("/api/toggle-copilot") }
     @objc func disconnect() { action("/api/disconnect") }
+    @objc func showAccounts() {
+        guard !terminating, currentView != "starting", let anchor = controls["accounts"] else { return }
+        if accountPopover?.isShown == true { accountPopover?.performClose(nil); return }
+        let accounts = status["accounts"] as? [[String: Any]] ?? []
+        let listHeight = CGFloat(accounts.count) * 36
+        let visibleHeight = min(216, listHeight)
+        let content = AccountListView(frame: NSRect(x: 0, y: 0, width: 264, height: visibleHeight + 49))
+        content.onCancel = { [weak self] in self?.accountPopover?.performClose(nil) }
+        let list = AccountListView(frame: NSRect(x: 0, y: 0, width: 264, height: listHeight))
+        list.onCancel = content.onCancel
+        for (index, account) in accounts.enumerated() {
+            list.addSubview(AccountRow(username: account["username"] as? String ?? "",
+                                       selected: account["selected"] as? Bool == true,
+                                       owner: self, y: CGFloat(index) * 36))
+        }
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 264, height: visibleHeight))
+        scroll.documentView = list
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        content.addSubview(scroll)
+        let divider = NSBox(frame: NSRect(x: 8, y: visibleHeight + 4, width: 248, height: 1))
+        divider.boxType = .separator
+        content.addSubview(divider)
+        let add = NativeButton(frame: NSRect(x: 8, y: visibleHeight + 9, width: 248, height: 32))
+        add.key = "accountAdd"
+        add.title = "Add account"
+        add.setAccessibilityLabel("Add account")
+        add.isBordered = false
+        add.target = self
+        add.action = #selector(addAccount)
+        content.addSubview(add)
+        let controller = NSViewController()
+        controller.view = content
+        let popover = NSPopover()
+        popover.contentViewController = controller
+        popover.contentSize = content.frame.size
+        popover.behavior = .transient
+        popover.animates = false
+        popover.delegate = self
+        accountPopover = popover
+        updateAccountControls()
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+        let first = (list.subviews.first as? AccountRow)?.choose ?? add
+        first.showsKeyboardFocus = (anchor as? NativeButton)?.showsKeyboardFocus == true
+        content.window?.makeFirstResponder(busy ? content : first)
+        anchor.setAccessibilityValue("Expanded")
+    }
+    func updateAccountControls() {
+        guard let content = accountPopover?.contentViewController?.view else { return }
+        let enabled = !busy && !terminating
+        for child in content.subviews {
+            if let button = child as? NSButton { button.isEnabled = enabled }
+            if let scroll = child as? NSScrollView {
+                for case let row as AccountRow in scroll.documentView?.subviews ?? [] {
+                    row.choose.isEnabled = enabled
+                    row.remove.isEnabled = enabled
+                    row.redraw()
+                }
+            }
+        }
+    }
+    func popoverDidClose(_ notification: Notification) {
+        guard let closed = notification.object as? NSPopover, closed === accountPopover else { return }
+        accountPopover = nil
+        controls["accounts"]?.setAccessibilityValue("Collapsed")
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.accountPopover == nil, !self.busy,
+                  let anchor = self.controls["accounts"], !anchor.isHiddenOrHasHiddenAncestor else { return }
+            self.window.makeFirstResponder(anchor)
+        }
+    }
+    func accountAction(_ path: String, _ username: String) {
+        guard !busy, !terminating else { return }
+        accountPopover?.close()
+        action(path, ["username": username])
+    }
+    @objc func addAccount() {
+        guard !busy, !terminating else { return }
+        accountPopover?.close()
+        addingAccount = true
+        currentView = "idle"
+        notice = ""
+        render()
+        window.makeFirstResponder(controls["connect"])
+    }
+    @objc func cancelAddAccount() {
+        guard !busy else { return }
+        addingAccount = false
+        deviceCode = ""
+        (controls["token"] as? NSTextField)?.stringValue = ""
+        currentView = status["connected"] as? Bool == true ? "connected" : "idle"
+        notice = ""
+        render()
+        window.makeFirstResponder(controls["accounts"]?.isHidden == false ? controls["accounts"] : controls["connect"])
+    }
     @objc func settingsView() {
         if currentView == "settings" { done(); return }
         currentView = "settings"
@@ -1006,7 +1265,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
     */
     @objc func saveStartup() { action("/api/settings", ["startAtLogin": (controls["startup"] as? NSButton)?.state == .on]) }
     @objc func saveTray() { action("/api/settings", ["closeToTray": (controls["tray"] as? NSButton)?.state == .on]) }
-    @objc func done() { deviceCode = ""; currentView = status["ready"] as? Bool == false ? "starting" : status["connected"] as? Bool == true ? "connected" : "idle"; notice = ""; render(); window.makeFirstResponder(controls["settings"]) }
+    @objc func done() {
+        if addingAccount { cancelAddAccount(); return }
+        deviceCode = ""
+        currentView = status["ready"] as? Bool == false ? "starting" : status["connected"] as? Bool == true ? "connected" : "idle"
+        notice = ""
+        render()
+        window.makeFirstResponder(controls["settings"])
+    }
     @objc func copyCode() {
         NSPasteboard.general.clearContents()
         if !NSPasteboard.general.setString((controls["code"] as? NSTextField)?.stringValue ?? "", forType: .string) { notice = "Could not write clipboard." }

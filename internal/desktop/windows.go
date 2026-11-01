@@ -70,6 +70,9 @@ const (
 	idCopilot
 	idAppearanceLabel
 	idAppearance
+	idAccounts
+	idAddAccount
+	idCancelAccount
 )
 
 type point struct{ X, Y int32 }
@@ -149,6 +152,10 @@ type Window struct {
 	palette                                                                                    palette
 	artwork                                                                                    map[string]image.Image
 	taskbar                                                                                    uint32
+	addingAccount                                                                              bool
+	accountPopup, accountList                                                                  uintptr
+	popupAccounts                                                                              []map[string]any
+	accountOffset                                                                              int
 	// discovered []map[string]any
 }
 
@@ -237,7 +244,9 @@ func (w *Window) build() error {
 		{"STATIC", "", "device", 6, 53, 206, 294, 42, 1},
 		{"BUTTON", "&Copy", "device", idCopy, 166, 253, 68, 24, 0x10000},
 		{"STATIC", "", "connected", 7, 50, 87, 175, 27, 0},
-		{"BUTTON", "Connecte&d", "connected", idDisconnect, 255, 87, 94, 28, 0x10000},
+		{"BUTTON", "Connecte&d", "connected", idDisconnect, 237, 87, 84, 28, 0x10000},
+		{"BUTTON", "Accounts", "all", idAccounts, 321, 87, 28, 28, 0x10000},
+		{"BUTTON", "Cancel", "all", idCancelAccount, 32, 60, 76, 28, 0x10000},
 		{"STATIC", "", "connected", 8, 50, 128, 299, 16, 0},
 		{"BUTTON", "C&laude", "connected", idClaude, 40, 184, 320, 44, 0x10000 | 3},
 		{"BUTTON", "&Codex", "connected", idCodex, 40, 228, 320, 44, 0x10000 | 3},
@@ -440,7 +449,17 @@ func (w *Window) render() {
 		proc("SetWindowPos", w.Handle, 0, 0, 0, uintptr(r.Right-r.Left), uintptr(r.Bottom-r.Top), 0x2|0x4|0x10)
 	}
 	for _, c := range w.controls {
+		if c.view == "account-popup" {
+			continue
+		}
 		show := c.view == "all" || c.view == w.view || (c.view == "sign-in" && (w.view == "idle" || w.view == "token"))
+		if c.id == idAccounts {
+			accounts, _ := w.status["accounts"].([]any)
+			show = w.view == "connected" || ((w.view == "idle" || w.view == "token") && !w.addingAccount && len(accounts) > 0)
+		}
+		if c.id == idCancelAccount {
+			show = w.addingAccount && w.view != "settings"
+		}
 		if c.id == idConnect && w.view == "starting" {
 			show = true
 		}
@@ -465,7 +484,7 @@ func (w *Window) render() {
 		proc("ShowWindow", c.handle, visible)
 		if c.id >= idConnect && c.id != idDone {
 			enabled := uintptr(1)
-			if w.busy || (w.view == "starting" && c.id != idProject) {
+			if (w.busy && c.id != idAccounts) || (w.view == "starting" && c.id != idProject) {
 				enabled = 0
 			}
 			if c.id == idLogin && w.tokenValue() == "" {
@@ -479,6 +498,7 @@ func (w *Window) render() {
 			proc("EnableWindow", c.handle, enabled)
 		}
 	}
+	w.updateAccountControls()
 	connectTitle := "Not &Connected"
 	if w.view == "starting" {
 		connectTitle = "Starting..."
@@ -570,7 +590,7 @@ func (w *Window) accept(e event) {
 			} else if w.view == "starting" {
 				w.view = "idle"
 			}
-			if w.status["ready"] != false && w.view != "settings" && w.status["connected"] == true {
+			if w.status["ready"] != false && !w.addingAccount && w.view != "settings" && w.status["connected"] == true {
 				// && w.view != "client" && w.view != "server"
 				w.view = "connected"
 			}
@@ -623,13 +643,14 @@ func (w *Window) accept(e event) {
 		} else {
 			w.notice = "GitHub did not return a device code."
 		}
-	case "/api/token-login", "/api/poll":
+	case "/api/token-login", "/api/poll", "/api/accounts/switch":
 		if e.value["ok"] == true {
+			w.addingAccount = false
 			w.device = ""
 			w.view = "connected"
 			w.setText(idToken, "")
 			w.refresh()
-			w.focus = w.control(idClaude)
+			w.focus = w.control(idAccounts)
 		} else if e.value["pending"] == true {
 			reason := text(e.value["error"])
 			if reason == "slow_down" {
@@ -694,6 +715,20 @@ func (w *Window) accept(e event) {
 		}
 		w.status["connected"] = false
 		w.refresh()
+	case "/api/accounts/delete":
+		for _, key := range []string{"connected", "username", "accounts"} {
+			w.status[key] = e.value[key]
+		}
+		w.view = "idle"
+		if w.status["connected"] == true {
+			w.view = "connected"
+		}
+		accounts, _ := w.status["accounts"].([]any)
+		w.focus = w.control(idAccounts)
+		if len(accounts) == 0 {
+			w.focus = w.control(idConnect)
+		}
+		w.refresh()
 	case "/api/appearance":
 		w.status["appearance"] = e.value["appearance"]
 	default:
@@ -711,6 +746,31 @@ func (w *Window) restoreFocus() {
 }
 func (w *Window) command(id int) {
 	switch id {
+	case idAccounts:
+		if err := w.showAccounts(); err != nil {
+			w.notice = err.Error()
+			w.render()
+		}
+	case idAddAccount:
+		if w.busy {
+			return
+		}
+		w.closeAccounts()
+		w.addingAccount, w.view, w.notice = true, "idle", ""
+		w.render()
+		proc("SetFocus", w.control(idConnect))
+	case idCancelAccount:
+		if w.busy {
+			return
+		}
+		w.addingAccount, w.device, w.notice = false, "", ""
+		w.setText(idToken, "")
+		w.view = "idle"
+		if w.status["connected"] == true {
+			w.view = "connected"
+		}
+		w.render()
+		proc("SetFocus", w.control(idAccounts))
 	case idConnect:
 		w.post("/api/start", map[string]any{})
 	case idTokenView:
@@ -723,6 +783,10 @@ func (w *Window) command(id int) {
 			w.post("/api/token-login", map[string]any{"token": token})
 		}
 	case idDone:
+		if w.addingAccount {
+			w.command(idCancelAccount)
+			return
+		}
 		w.device = ""
 		w.view = "idle"
 		if w.status["connected"] == true {
@@ -1059,6 +1123,7 @@ func windowProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		}
 		return 0
 	case 0x2e0:
+		w.closeAccounts()
 		w.dpi = int(wp & 0xffff)
 		w.fonts()
 		var r rect
@@ -1075,6 +1140,9 @@ func windowProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		w.paintWindow(wp)
 		if lp&0x10 != 0 {
 			for _, c := range w.controls {
+				if c.view == "account-popup" {
+					continue
+				}
 				if proc("GetWindowLongW", c.handle, ^uintptr(15))&0x10000000 == 0 {
 					continue
 				}
@@ -1179,6 +1247,13 @@ func Run(app *bridge.App, hidden bool) error {
 		}
 		if result == 0 {
 			break
+		}
+		if w.accountKey(msg) {
+			continue
+		}
+		if msg.Message == 0x100 && msg.WParam == 27 && w.addingAccount && w.view != "settings" {
+			w.command(idCancelAccount)
+			continue
 		}
 		if msg.Message == 0x100 && msg.WParam == 0x1b && (w.view == "settings" || w.view == "token" || w.view == "device") {
 			// || w.view == "client" || w.view == "server"

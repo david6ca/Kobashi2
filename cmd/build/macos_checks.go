@@ -11,7 +11,7 @@ import (
 
 func checkMac(smoke bool) error {
 	if !smoke {
-		for _, test := range []string{"macos-artwork.swift", "macos-startup.swift", "macos-toggles.swift", "macos-appearance.swift"} {
+		for _, test := range []string{"macos-artwork.swift", "macos-startup.swift", "macos-toggles.swift", "macos-appearance.swift", "macos-accounts.swift"} {
 			if err := checkMacHarness(test); err != nil {
 				return err
 			}
