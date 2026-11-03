@@ -600,8 +600,10 @@ func (a *App) copilotWithRetry(ctx context.Context, method, path string, body []
 			a.invalidateToken(token)
 			if !*retried {
 				*retried = true
+				log.Printf("request=%s retry reason=authentication status=%d attempt=1 max_retries=1", requestLogID(ctx), response.StatusCode)
 				continue
 			}
+			log.Printf("request=%s retry_exhausted reason=authentication status=%d", requestLogID(ctx), response.StatusCode)
 		}
 		response.Body = io.NopCloser(bytes.NewReader(data))
 		return response, nil

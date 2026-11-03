@@ -12,12 +12,19 @@ import (
 	"path/filepath"
 	"runtime"
 	"syscall"
+	"time"
 
 	"github.com/david6ca/Kobashi2/internal/bridge"
 	"github.com/david6ca/Kobashi2/internal/desktop"
 )
 
 var Version = "dev"
+
+func configureLogging(file, console io.Writer) {
+	// Windows GUI launches may not have a usable stderr handle.
+	log.SetOutput(io.MultiWriter(file, console))
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
+}
 
 func main() {
 	headless := flag.Bool("no-open", false, "Run the native bridge without a window")
@@ -59,7 +66,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer logFile.Close()
-	log.SetOutput(io.MultiWriter(os.Stderr, logFile))
+	configureLogging(logFile, os.Stderr)
 	if Version == "dev" {
 		if data, err := os.ReadFile("package.json"); err == nil {
 			var pkg struct{ Version string }
@@ -73,6 +80,7 @@ func main() {
 		desktop.ShowError(err.Error())
 		os.Exit(1)
 	}
+	log.Printf("Kobashi2 starting version=%s platform=%s/%s pid=%d time=%s", Version, runtime.GOOS, runtime.GOARCH, os.Getpid(), time.Now().Format(time.RFC3339))
 	options := bridge.Options{Home: *home, Executable: executable, AppPath: os.Getenv("KOBASHI_APP_PATH"), Version: Version, ControlToken: os.Getenv("KOBASHI_CONTROL_TOKEN"),
 		Ports: bridge.Ports{Codex: 18921 + *offset, Control: 18922 + *offset, Claude: 18923 + *offset, Copilot: 18925 + *offset}, Desktop: !*headless || os.Getenv("KOBASHI_APP_PATH") != ""}
 	if *noStartup {

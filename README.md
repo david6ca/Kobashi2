@@ -417,6 +417,26 @@ does not schedule further checks in the background; restart Codex to retry.
 Exiting the clients stops queued validation work. Account changes and newer
 startups invalidate late results from older rounds.
 
+## Diagnostics
+
+Kobashi2 appends diagnostic logs to `~/.kobashi/kobashi.log`
+(`%USERPROFILE%\.kobashi\kobashi.log` on Windows). File logging also works when
+the native app has no console. Timestamps use local time with microsecond
+precision; startup records the time-zone offset, app version, platform, and PID.
+
+Each Claude, Codex, and Copilot bridge request has a correlation ID. Logs include
+the model, upstream HTTP status and request IDs, connection reuse and proxy route,
+header/body timing, transferred bytes, authentication and compatibility retries,
+transport failures, cancellation, and downstream write failures. Streaming
+requests record their terminal event or an early EOF without a terminal event.
+An HTTP 200 or ordinary EOF alone is not logged as a completed Responses stream.
+Logging does not replay interrupted inference requests or change client retry behavior.
+
+Request and response bodies, authorization headers, tokens, URL credentials,
+and query parameters are not logged. Upstream error codes and error messages
+are recorded for diagnosis. Logs persist across launches; inspect the matching
+timestamp and correlation ID when reporting a connection problem.
+
 ## Building
 
 Install Go 1.27 or later to build from source. Windows builds need only Go;

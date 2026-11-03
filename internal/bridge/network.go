@@ -58,22 +58,26 @@ func (r *upstreamRoute) dialTLS(ctx context.Context, network, address string) (n
 		return nil, err
 	}
 	if proxy != nil {
+		log.Printf("request=%s route=configured_proxy scheme=%s host=%q target=%q", requestLogID(ctx), proxy.Scheme, proxy.Host, address)
 		return tunnelTLS(ctx, address, proxy, 8*time.Second)
 	}
 	r.mu.Lock()
 	local, at := r.local, r.at
 	r.mu.Unlock()
 	if local != nil && time.Since(at) < time.Minute {
+		log.Printf("request=%s route=cached_proxy scheme=%s host=%q target=%q", requestLogID(ctx), local.Scheme, local.Host, address)
 		conn, e := tunnelTLS(ctx, address, local, 8*time.Second)
 		if e == nil {
 			return conn, nil
 		}
+		log.Printf("request=%s cached_proxy_error=%q", requestLogID(ctx), diagnosticError(e))
 		r.mu.Lock()
 		if r.local == local {
 			r.local = nil
 		}
 		r.mu.Unlock()
 	}
+	log.Printf("request=%s route=direct target=%q", requestLogID(ctx), address)
 	direct, err := tunnelTLS(ctx, address, nil, 2500*time.Millisecond)
 	if err == nil {
 		return direct, nil
@@ -81,6 +85,7 @@ func (r *upstreamRoute) dialTLS(ctx context.Context, network, address string) (n
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
+	log.Printf("request=%s direct_error=%q probing_local_proxies=true", requestLogID(ctx), diagnosticError(err))
 	// Every candidate is checked with normal certificate verification.
 	candidates := []string{"http://127.0.0.1:7890", "http://127.0.0.1:7897", "http://127.0.0.1:1089", "http://127.0.0.1:1087", "http://127.0.0.1:8080", "socks5://127.0.0.1:1080", "socks5://127.0.0.1:7891", "socks5://127.0.0.1:1086"}
 	type result struct {
@@ -107,12 +112,13 @@ func (r *upstreamRoute) dialTLS(ctx context.Context, network, address string) (n
 		}
 	}
 	if connection == nil {
+		log.Printf("request=%s local_proxy_discovery=unavailable", requestLogID(ctx))
 		return nil, err
 	}
 	r.mu.Lock()
 	r.local, r.at = found, time.Now()
 	r.mu.Unlock()
-	log.Printf("Using local proxy %s://%s", found.Scheme, found.Host)
+	log.Printf("request=%s route=discovered_proxy scheme=%s host=%q target=%q", requestLogID(ctx), found.Scheme, found.Host, address)
 	return connection, nil
 }
 func tunnelTLS(ctx context.Context, address string, proxy *url.URL, timeout time.Duration) (net.Conn, error) {

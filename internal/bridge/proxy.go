@@ -12,9 +12,13 @@ import (
 )
 
 func (a *App) codex(w http.ResponseWriter, r *http.Request) {
+	w, r, done := logProxyRequest(w, r, "Codex")
+	defer done()
 	a.openAI(w, r, false)
 }
 func (a *App) copilotApp(w http.ResponseWriter, r *http.Request) {
+	w, r, done := logProxyRequest(w, r, "Copilot")
+	defer done()
 	if r.Header.Get("Origin") != "" {
 		respond(w, 403, object{"error": "Browser origins are not allowed"})
 		return
@@ -73,7 +77,7 @@ func (a *App) openAI(w http.ResponseWriter, r *http.Request, copilotApp bool) {
 			return
 		}
 		if err := a.models.ensureSession(r.Context()); err != nil {
-			log.Printf("Codex model startup: %v", err)
+			log.Printf("request=%s client=Codex model_startup_error=%q", requestLogID(r.Context()), diagnosticError(err))
 		}
 		out := []any{}
 		for _, m := range a.models.visible() {
@@ -97,13 +101,20 @@ func (a *App) openAI(w http.ResponseWriter, r *http.Request, copilotApp bool) {
 		return
 	}
 	var requestBody object
+	var metadata struct {
+		Model  string
+		Stream bool
+	}
+	if json.Unmarshal(body, &metadata) == nil {
+		log.Printf("request=%s model=%q stream=%t", requestLogID(r.Context()), metadata.Model, metadata.Stream)
+	}
 	token := ""
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.UseNumber()
 	if r.Method == "POST" && strings.Contains(r.URL.Path, "/responses") && decoder.Decode(&requestBody) == nil && requestBody != nil && decoder.Decode(new(any)) == io.EOF {
 		if !copilotApp {
 			if err := a.models.ensureSession(r.Context()); err != nil {
-				log.Printf("Codex capability lookup: %v", err)
+				log.Printf("request=%s client=Codex capability_lookup_error=%q", requestLogID(r.Context()), diagnosticError(err))
 			}
 			rules, t := a.models.requestRules(str(requestBody["model"]))
 			token = t
@@ -138,13 +149,16 @@ func (a *App) openAI(w http.ResponseWriter, r *http.Request, copilotApp bool) {
 			}
 			var errorBody object
 			_ = json.Unmarshal(data, &errorBody)
+			if detail := parseError(errorBody); detail != nil {
+				log.Printf("request=%s client=%s upstream_failure status=%d model=%q code=%q message=%q", requestLogID(r.Context()), name, response.StatusCode, metadata.Model, str(detail["code"]), str(detail["message"]))
+			}
 			if !copilotApp {
 				a.models.observe(str(requestBody["model"]), token, response.StatusCode, errorBody, nil)
 			}
 			if response.StatusCode == 400 && attempt < 3 && requestBody != nil {
 				next, rules, changed := repairRequest(requestBody, errorBody)
 				if changed {
-					log.Printf("%s request compatibility (model %s): %v", name, str(requestBody["model"]), rules)
+					log.Printf("request=%s client=%s retry reason=compatibility model=%q attempt=%d max_retries=3 rules=%v", requestLogID(r.Context()), name, str(requestBody["model"]), attempt+1, rules)
 					if !copilotApp {
 						a.models.observe(str(requestBody["model"]), token, response.StatusCode, errorBody, rules)
 					}
@@ -162,7 +176,7 @@ func (a *App) openAI(w http.ResponseWriter, r *http.Request, copilotApp bool) {
 			_, _ = w.Write(data)
 			return
 		}
-		normalize := response.StatusCode == 200 && (copilotApp || strings.Contains(path, "/responses")) && strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "text/event-stream") &&
+		normalize := response.StatusCode == 200 && (copilotApp || strings.Contains(path, "/responses") || strings.Contains(path, "/chat/completions")) && strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "text/event-stream") &&
 			(response.Header.Get("Content-Encoding") == "" || response.Header.Get("Content-Encoding") == "identity")
 		for key, values := range response.Header {
 			if strings.EqualFold(key, "Connection") || strings.EqualFold(key, "Transfer-Encoding") || (normalize && strings.EqualFold(key, "Content-Length")) {
@@ -173,13 +187,24 @@ func (a *App) openAI(w http.ResponseWriter, r *http.Request, copilotApp bool) {
 		w.WriteHeader(response.StatusCode)
 		if normalize {
 			failureLogged := false
+			terminal, lastEvent, events := "", "", 0
 			err = normalizeSSE(response.Body, w, func(event object) {
+				events++
+				lastEvent = str(event["type"])
+				if contains([]string{"response.completed", "response.failed", "response.incomplete", "error"}, lastEvent) {
+					terminal = lastEvent
+				}
+				for _, choice := range arr(event["choices"]) {
+					if str(obj(choice)["finish_reason"]) != "" {
+						terminal = "chat.finish"
+					}
+				}
 				detail := parseError(event)
 				if detail == nil {
 					return
 				}
 				if !failureLogged {
-					log.Printf("%s upstream failure (model %s, code %s): %s", name, str(requestBody["model"]), str(detail["code"]), str(detail["message"]))
+					log.Printf("request=%s client=%s upstream_failure model=%q code=%q message=%q", requestLogID(r.Context()), name, metadata.Model, str(detail["code"]), str(detail["message"]))
 					failureLogged = true
 				}
 				if requestBody == nil || copilotApp {
@@ -188,12 +213,24 @@ func (a *App) openAI(w http.ResponseWriter, r *http.Request, copilotApp bool) {
 				_, rules, _ := repairRequest(requestBody, event)
 				a.models.observe(str(requestBody["model"]), token, 400, event, rules)
 			})
+			outcome := terminal
+			if outcome == "" {
+				outcome = "eof_without_terminal"
+			}
+			if err != nil {
+				outcome = "io_error"
+			}
+			if r.Context().Err() != nil {
+				outcome = "canceled"
+			}
+			log.Printf("request=%s client=%s stream_end outcome=%s terminal=%q last_event=%q events=%d error=%q context_error=%q",
+				requestLogID(r.Context()), name, outcome, terminal, lastEvent, events, diagnosticError(err), diagnosticError(r.Context().Err()))
 		} else {
 			_, err = io.Copy(w, response.Body)
 		}
 		response.Body.Close()
 		if err != nil {
-			log.Printf("%s upstream stream: %v", name, err)
+			log.Printf("request=%s client=%s upstream_stream_error=%q", requestLogID(r.Context()), name, diagnosticError(err))
 		}
 		return
 	}
@@ -206,6 +243,8 @@ func claudeError(w http.ResponseWriter, status int, message string) {
 	respond(w, status, object{"type": "error", "error": object{"type": typ, "message": message}})
 }
 func (a *App) claude(w http.ResponseWriter, r *http.Request) {
+	w, r, done := logProxyRequest(w, r, "Claude")
+	defer done()
 	state := a.snapshot()
 	/*
 		if state.RemoteURL != "" {
@@ -253,9 +292,10 @@ func (a *App) claude(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	request := anthropicToOpenAI(body)
+	log.Printf("request=%s model=%q stream=%t", requestLogID(r.Context()), str(body["model"]), body["stream"] == true)
 	raw, err := a.discover(r.Context(), false)
 	if err != nil {
-		log.Printf("Claude model discovery: %v", err)
+		log.Printf("request=%s client=Claude model_discovery_error=%q", requestLogID(r.Context()), diagnosticError(err))
 		request["model"] = defaultClaude
 	} else {
 		request["model"] = mapClaude(str(request["model"]), raw)
@@ -295,8 +335,16 @@ func (a *App) claude(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 		err = translateStream(response.Body, w, model, estimateTokens(body))
 		response.Body.Close()
+		outcome := "completed"
 		if err != nil {
-			log.Printf("Claude upstream stream: %v", err)
+			outcome = "error"
+		}
+		if r.Context().Err() != nil {
+			outcome = "canceled"
+		}
+		log.Printf("request=%s client=Claude stream_end outcome=%s error=%q context_error=%q", requestLogID(r.Context()), outcome, diagnosticError(err), diagnosticError(r.Context().Err()))
+		if err != nil {
+			log.Printf("request=%s client=Claude upstream_stream_error=%q", requestLogID(r.Context()), diagnosticError(err))
 		}
 		return
 	}

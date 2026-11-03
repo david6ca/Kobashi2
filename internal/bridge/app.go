@@ -197,6 +197,7 @@ func (a *App) Start() error {
 			return fmt.Errorf("port %d is already in use; quit the existing Kobashi2 (or Kobashi) yourself before switching versions: %w", port, err)
 		}
 		listeners = append(listeners, listener)
+		log.Printf("Kobashi2 listening address=%s", listener.Addr())
 	}
 	for i, handler := range handlers {
 		server := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 90 * time.Second,
@@ -221,7 +222,9 @@ func (a *App) initialize() {
 	defer func() {
 		a.mu.Lock()
 		a.ready = true
+		connected := a.state.active()
 		a.mu.Unlock()
+		log.Printf("Kobashi2 ready connected=%t", connected)
 	}()
 	/*
 		defer func() {
@@ -355,6 +358,7 @@ func (a *App) Settings() Settings { a.mu.RLock(); defer a.mu.RUnlock(); return a
 func (a *App) Stop() error {
 	var result error
 	a.stopOnce.Do(func() {
+		log.Print("Kobashi2 stopping")
 		a.cancel()
 		a.models.pause()
 		// a.actions.Lock()
@@ -380,6 +384,7 @@ func (a *App) Stop() error {
 		a.actions.Unlock()
 		a.stopError = result
 		a.report(result)
+		log.Printf("Kobashi2 stopped error=%q", diagnosticError(result))
 		close(a.closed)
 	})
 	return a.stopError
@@ -455,7 +460,7 @@ func (a *App) request(ctx context.Context, method, address string, body []byte, 
 		return nil, err
 	}
 	request.Header = h.Clone()
-	return a.client.Do(request)
+	return a.loggedRequest(request)
 }
 func readResponse(response *http.Response, limit int64) ([]byte, error) {
 	defer response.Body.Close()
