@@ -61,12 +61,17 @@ func (w *diagnosticResponse) Write(data []byte) (int, error) {
 	return n, err
 }
 func (w *diagnosticResponse) Flush() {
+	_ = w.FlushError()
+}
+func (w *diagnosticResponse) FlushError() error {
 	if w.status == 0 {
 		w.WriteHeader(http.StatusOK)
 	}
 	if err := http.NewResponseController(w.ResponseWriter).Flush(); err != nil {
 		w.writeErr = err
+		return err
 	}
+	return nil
 }
 
 func logProxyRequest(w http.ResponseWriter, r *http.Request, client string) (http.ResponseWriter, *http.Request, func()) {

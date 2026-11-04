@@ -432,6 +432,13 @@ requests record their terminal event or an early EOF without a terminal event.
 An HTTP 200 or ordinary EOF alone is not logged as a completed Responses stream.
 Logging does not replay interrupted inference requests or change client retry behavior.
 
+Upstream response headers have a two-minute timeout. After headers arrive,
+five minutes without response bytes ends the request; active streams have no
+total-duration limit. Responses terminal events end forwarding immediately.
+A failure without details waits at most one second for a following error frame.
+Interrupted streams send an explicit error to the client instead of ending
+silently with HTTP 200.
+
 Request and response bodies, authorization headers, tokens, URL credentials,
 and query parameters are not logged. Upstream error codes and error messages
 are recorded for diagnosis. Logs persist across launches; inspect the matching

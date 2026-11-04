@@ -30,9 +30,9 @@ func newHTTPClient() *http.Client {
 		DialTLSContext: route.dialTLS,
 		DialContext:    (&net.Dialer{Timeout: 8 * time.Second, KeepAlive: 15 * time.Second}).DialContext,
 		MaxIdleConns:   32, MaxIdleConnsPerHost: 8, IdleConnTimeout: 90 * time.Second,
-		ResponseHeaderTimeout: 0, ForceAttemptHTTP2: false,
+		ResponseHeaderTimeout: 2 * time.Minute, ForceAttemptHTTP2: false,
 	}
-	return &http.Client{Transport: tr}
+	return &http.Client{Transport: &idleTransport{base: tr, timeout: 5 * time.Minute}}
 }
 func configuredProxy() (*url.URL, error) {
 	for _, key := range []string{"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"} {

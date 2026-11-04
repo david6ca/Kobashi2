@@ -80,7 +80,14 @@ func TestProxyDiagnosticsStreamEndings(t *testing.T) {
 				} else {
 					a.codex(w, r)
 				}
-				if calls != 1 || w.Code != 200 || w.Body.String() != fixture.source || !w.Flushed {
+				got := w.Body.String()
+				if fixture.outcome == "eof_without_terminal" || fixture.readError {
+					if !strings.Contains(w.Body.String(), `"code":"upstream_stream_interrupted"`) || strings.Contains(w.Body.String(), `"type":"response.completed"`) {
+						t.Fatal("interrupted stream did not deliver an explicit error", w.Body.String())
+					}
+					got = strings.Split(w.Body.String(), "\n\nevent: ")[0]
+				}
+				if calls != 1 || w.Code != 200 || got != fixture.source || !w.Flushed {
 					t.Fatal("diagnostics changed stream, flush, or replay behavior", calls, w.Code, w.Body.String())
 				}
 				text := logs.String()
@@ -243,7 +250,8 @@ func TestUpstreamDiagnosticsEarlyCloseAndConnectionReuse(t *testing.T) {
 	}))
 	defer server.Close()
 	a := testApp(t, nil)
-	a.client = server.Client()
+	a.client = &http.Client{Transport: &idleTransport{base: &http.Transport{}, timeout: time.Second}}
+	defer a.client.CloseIdleConnections()
 	for range 2 {
 		result, err := a.request(context.Background(), "GET", server.URL+"/models?private-query", nil, headers("private-token"))
 		if err != nil {
@@ -269,5 +277,36 @@ func TestUpstreamDiagnosticsEarlyCloseAndConnectionReuse(t *testing.T) {
 	}
 	if strings.Contains(text, "private-") {
 		t.Fatal("upstream diagnostics leaked payload, token, or query", text)
+	}
+}
+
+func TestProxySignalsUpstreamTimeoutWithoutReplaying(t *testing.T) {
+	logs := captureDiagnostics(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n")
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	transport := &idleTransport{base: &http.Transport{}, timeout: 50 * time.Millisecond}
+	defer transport.CloseIdleConnections()
+	calls := 0
+	a := testApp(t, func(r *http.Request) (*http.Response, error) {
+		calls++
+		upstream := r.Clone(r.Context())
+		upstream.URL, _ = url.Parse(server.URL)
+		return transport.RoundTrip(upstream)
+	})
+	a.state = session{Token: "account", Codex: true}
+	a.bearer, a.expiry = "bearer", float64(time.Now().Add(time.Hour).Unix())
+	a.models.sessionStarted = true
+	w := httptest.NewRecorder()
+	a.codex(w, httptest.NewRequest("POST", "/v1/responses", strings.NewReader(`{"model":"gpt-test","stream":true}`)))
+	if calls != 1 || !strings.Contains(w.Body.String(), `"code":"upstream_timeout"`) || strings.Contains(w.Body.String(), "response.completed") {
+		t.Fatal("timeout was hidden, replayed, or reported as success", calls, w.Body.String())
+	}
+	if !strings.Contains(logs.String(), `read_error="upstream response idle timeout"`) || !strings.Contains(logs.String(), `context_error=""`) {
+		t.Fatal("upstream timeout was misreported as a caller cancellation", logs.String())
 	}
 }

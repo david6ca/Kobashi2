@@ -21,14 +21,18 @@ import (
 )
 
 func TestInstalledCodexStreamingFailureDetails(t *testing.T) {
-	checkInstalledCodexStream(t, false)
+	checkInstalledCodexStream(t, false, false)
+}
+
+func TestInstalledCodexInterruptedStream(t *testing.T) {
+	checkInstalledCodexStream(t, false, true)
 }
 
 func TestInstalledCodexCopilotDelegation(t *testing.T) {
-	checkInstalledCodexStream(t, true)
+	checkInstalledCodexStream(t, true, false)
 }
 
-func checkInstalledCodexStream(t *testing.T, live bool) {
+func checkInstalledCodexStream(t *testing.T, live, interrupted bool) {
 	t.Helper()
 	source := os.Getenv("KOBASHI_TEST_CODEX_EXE")
 	if source == "" {
@@ -76,6 +80,9 @@ func checkInstalledCodexStream(t *testing.T, live bool) {
 		}
 	}
 	message := "Encrypted function output content could not be decrypted or decoded."
+	if interrupted {
+		message = "The upstream connection closed before the response finished."
+	}
 	const answer = "KOBASHI_V1_DELEGATION_OK_61b2"
 	var v1Tools atomic.Bool
 	var spawned atomic.Bool
@@ -156,6 +163,10 @@ func checkInstalledCodexStream(t *testing.T, live bool) {
 		}
 		result := response(200, nil)
 		result.Header.Set("Content-Type", "text/event-stream")
+		if interrupted {
+			result.Body = io.NopCloser(strings.NewReader(""))
+			return result, nil
+		}
 		failure := object{"type": "response.failed", "response": object{"id": "resp-test", "object": "response", "status": "failed", "output": []any{}, "error": nil}}
 		detail := object{"type": "error", "code": "invalid_request_body", "message": message, "param": nil}
 		result.Body = io.NopCloser(strings.NewReader("data: " + string(jsonBytes(failure)) + "\n\ndata: " + string(jsonBytes(detail)) + "\n\n"))
@@ -235,6 +246,8 @@ func checkInstalledCodexStream(t *testing.T, live bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), duration)
 	defer cancel()
 	command := exec.CommandContext(ctx, path, "app-server", "--stdio", "--strict-config")
+	var stderr diagnosticBuffer
+	command.Stderr = &stderr
 	for _, entry := range os.Environ() {
 		key := strings.ToUpper(strings.SplitN(entry, "=", 2)[0])
 		if !contains([]string{"CODEX_HOME", "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "CODEX_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL",
@@ -268,7 +281,7 @@ func checkInstalledCodexStream(t *testing.T, live bool) {
 	next := func() object {
 		t.Helper()
 		if !scanner.Scan() {
-			t.Fatal("isolated Codex stopped before responding", scanner.Err(), ctx.Err())
+			t.Fatal("isolated Codex stopped before responding", scanner.Err(), ctx.Err(), stderr.String())
 		}
 		var event object
 		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
@@ -297,7 +310,7 @@ func checkInstalledCodexStream(t *testing.T, live bool) {
 		t.Helper()
 		id++
 		if _, err := fmt.Fprintln(stdin, string(jsonBytes(object{"id": id, "method": method, "params": params}))); err != nil {
-			t.Fatal(err)
+			t.Fatal(err, stderr.String())
 		}
 		for {
 			event := next()

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"time"
 )
 
 type sseEvent struct {
@@ -143,6 +144,7 @@ func (n *sseIDs) normalize(event object) bool {
 	return changed
 }
 func normalizeSSE(r io.Reader, w io.Writer, onEvent func(object)) error {
+	complete := errors.New("SSE terminal event forwarded")
 	ids := sseIDs{}
 	write := func(e sseEvent) error {
 		event, name := e.data()
@@ -190,13 +192,26 @@ func normalizeSSE(r io.Reader, w io.Writer, onEvent func(object)) error {
 		}
 		_, err := io.WriteString(w, text)
 		if err == nil {
-			if f, ok := w.(interface{ Flush() }); ok {
+			if f, ok := w.(interface{ FlushError() error }); ok {
+				err = f.FlushError()
+			} else if f, ok := w.(interface{ Flush() }); ok {
 				f.Flush()
 			}
 		}
 		return err
 	}
 	var pending *sseEvent
+	var pendingTimer *time.Timer
+	var pendingClosed chan struct{}
+	stopPendingTimer := func() {
+		if pendingTimer != nil {
+			if !pendingTimer.Stop() {
+				<-pendingClosed
+			}
+			pendingTimer = nil
+		}
+	}
+	defer stopPendingTimer()
 	err := readSSE(r, func(e sseEvent) error {
 		event, name := e.data()
 		kind := str(event["type"])
@@ -211,7 +226,9 @@ func normalizeSSE(r io.Reader, w io.Writer, onEvent func(object)) error {
 			}
 			return err
 		}
+		finishedFailure := pending != nil
 		if pending != nil {
+			stopPendingTimer()
 			failure := *pending
 			pending = nil
 			if kind == "error" && event != nil {
@@ -230,12 +247,31 @@ func normalizeSSE(r io.Reader, w io.Writer, onEvent func(object)) error {
 		// Copilot can send the failure details in the next error frame.
 		if kind == "response.failed" && obj(event["response"]) != nil && str(parseError(event)["message"]) == "" {
 			pending = &e
+			// Details usually follow immediately. Do not hide a known failure
+			// indefinitely if the upstream leaves the connection open.
+			if closer, ok := r.(io.Closer); ok {
+				pendingClosed = make(chan struct{})
+				pendingTimer = time.AfterFunc(time.Second, func() {
+					_ = closer.Close()
+					close(pendingClosed)
+				})
+			}
 			return nil
 		}
-		return write(e)
+		if err := write(e); err != nil {
+			return err
+		}
+		if finishedFailure || contains([]string{"response.completed", "response.incomplete", "response.failed", "error"}, kind) {
+			return complete
+		}
+		return nil
 	})
+	stopPendingTimer()
 	if pending != nil {
 		err = errors.Join(err, write(*pending))
+	}
+	if errors.Is(err, complete) {
+		return nil
 	}
 	return err
 }

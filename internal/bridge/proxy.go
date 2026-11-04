@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -187,9 +188,15 @@ func (a *App) openAI(w http.ResponseWriter, r *http.Request, copilotApp bool) {
 		w.WriteHeader(response.StatusCode)
 		if normalize {
 			failureLogged := false
-			terminal, lastEvent, events := "", "", 0
+			terminal, lastEvent, responseID, events := "", "", "", 0
 			err = normalizeSSE(response.Body, w, func(event object) {
 				events++
+				if responseID == "" {
+					responseID = str(nested(event, "response", "id"))
+					if responseID == "" {
+						responseID = str(event["response_id"])
+					}
+				}
 				lastEvent = str(event["type"])
 				if contains([]string{"response.completed", "response.failed", "response.incomplete", "error"}, lastEvent) {
 					terminal = lastEvent
@@ -225,6 +232,28 @@ func (a *App) openAI(w http.ResponseWriter, r *http.Request, copilotApp bool) {
 			}
 			log.Printf("request=%s client=%s stream_end outcome=%s terminal=%q last_event=%q events=%d error=%q context_error=%q",
 				requestLogID(r.Context()), name, outcome, terminal, lastEvent, events, diagnosticError(err), diagnosticError(r.Context().Err()))
+			tracked, _ := w.(*diagnosticResponse)
+			if terminal == "" && r.Context().Err() == nil && (tracked == nil || tracked.writeErr == nil) {
+				code, message := "upstream_stream_interrupted", "The upstream connection closed before the response finished."
+				var timeout interface{ Timeout() bool }
+				if errors.As(err, &timeout) && timeout.Timeout() {
+					code, message = "upstream_timeout", "The upstream provider stopped sending data."
+				}
+				kind := "response.failed"
+				event := object{"type": kind, "response": object{"id": responseID, "object": "response", "status": "failed", "output": []any{}, "error": object{"code": code, "message": message}}}
+				if strings.Contains(path, "/chat/completions") {
+					kind = "error"
+					event = object{"error": object{"type": "server_error", "code": code, "message": message, "param": nil}}
+				}
+				// Complete any truncated frame before sending a distinct error.
+				_, writeErr := io.WriteString(w, "\n\nevent: "+kind+"\ndata: "+string(jsonBytes(event))+"\n\n")
+				if writeErr == nil {
+					writeErr = http.NewResponseController(w).Flush()
+				}
+				if writeErr != nil {
+					log.Printf("request=%s client=%s stream_error_delivery=%q", requestLogID(r.Context()), name, diagnosticError(writeErr))
+				}
+			}
 		} else {
 			_, err = io.Copy(w, response.Body)
 		}

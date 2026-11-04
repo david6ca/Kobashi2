@@ -6,7 +6,55 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestSSETerminalDoesNotWaitForEOF(t *testing.T) {
+	for _, kind := range []string{"response.completed", "response.incomplete", "response.failed", "error"} {
+		t.Run(kind, func(t *testing.T) {
+			source := "data: " + string(jsonBytes(object{"type": kind, "response": object{"error": object{"message": "failure"}}})) + "\n\n"
+			var out bytes.Buffer
+			// Reading beyond the terminal frame would return an error.
+			if err := normalizeSSE(io.MultiReader(strings.NewReader(source), brokenStreamReader{}), &out, func(object) {}); err != nil || out.String() != source {
+				t.Fatal("terminal event waited for the upstream to close", err, out.String())
+			}
+		})
+	}
+}
+
+func TestSSEPendingFailureCannotWaitIndefinitely(t *testing.T) {
+	r, w := io.Pipe()
+	defer r.Close()
+	defer w.Close()
+	done := make(chan error, 1)
+	var out bytes.Buffer
+	go func() { done <- normalizeSSE(r, &out, func(object) {}) }()
+	_, err := io.WriteString(w, "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":null}}\n\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+		if !strings.Contains(out.String(), "without an error message") {
+			t.Fatal("pending failure was not delivered", out.String())
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("pending failure still waits for EOF")
+	}
+}
+
+func TestSSEFlushFailureStopsReading(t *testing.T) {
+	source := "data: {\"type\":\"response.output_text.delta\",\"delta\":\"text\"}\n\n"
+	f := &flushFailureWriter{}
+	err := normalizeSSE(io.MultiReader(strings.NewReader(source), brokenStreamReader{}), f, func(object) {})
+	if !errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatal("flush error was ignored", err)
+	}
+}
+
+type flushFailureWriter struct{ bytes.Buffer }
+
+func (*flushFailureWriter) FlushError() error { return io.ErrClosedPipe }
 
 func TestParseStreamingErrorShapes(t *testing.T) {
 	detail := object{"code": "invalid_request_body", "message": "Encrypted function output content could not be decrypted or decoded."}
