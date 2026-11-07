@@ -119,7 +119,9 @@ final class FlippedView: NSView {
             let width = min(175, ("@\(account)" as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13)]).width + 38)
             rounded(NSRect(x: 50, y: 87, width: width, height: 27), radius: 13, fill: c.badge, border: c.border)
             // if owner.status["authMethod"] as? String != "remote" {
-            owner.drawArtwork("github", in: NSRect(x: 55, y: 92, width: 16, height: 16), tint: c.accent)
+            if owner.status["authMethod"] as? String == "local" {
+                NSImage(systemSymbolName: "desktopcomputer", accessibilityDescription: "Local")?.draw(in: NSRect(x: 55, y: 92, width: 16, height: 16))
+            } else { owner.drawArtwork("github", in: NSRect(x: 55, y: 92, width: 16, height: 16), tint: c.accent) }
             // }
             if let (used, total) = owner.usageValues {
                 rounded(NSRect(x: 50, y: 146, width: 299, height: 5), radius: 3, fill: c.track, border: c.track)
@@ -318,7 +320,7 @@ final class NativeButton: NSButton {
                 view.contentTintColor = c.muted
                 view.cell?.draw(withFrame: view.frame, in: self)
             } else if key == "connect" {
-                owner?.drawArtwork("github", in: NSRect(x: 23, y: 12, width: 18, height: 18), tint: textColor)
+                NSImage(systemSymbolName: "plus", accessibilityDescription: nil)?.draw(in: NSRect(x: 23, y: 12, width: 18, height: 18))
                 nativeText(title, in: NSRect(x: 48, y: 12, width: bounds.width - 60, height: 22), font: font, color: textColor)
             } else {
                 nativeText(title, in: NSRect(x: 2, y: bounds.height / 2 - 8, width: bounds.width - 4, height: 22),
@@ -355,6 +357,7 @@ final class AccountRow: NSView {
     weak var owner: AppDelegate?
     let username: String
     let selected: Bool
+    let displayName: String
     let choose = NativeButton()
     let remove = NativeButton()
     var hovering = false
@@ -363,14 +366,15 @@ final class AccountRow: NSView {
     var highlighted: Bool {
         hovering || window?.firstResponder === choose || window?.firstResponder === remove
     }
-    init(username: String, selected: Bool, owner: AppDelegate, y: CGFloat) {
+    init(username: String, displayName: String? = nil, selected: Bool, owner: AppDelegate, y: CGFloat) {
         self.username = username
+        self.displayName = displayName ?? "@\(username)"
         self.selected = selected
         self.owner = owner
         super.init(frame: NSRect(x: 0, y: y, width: 264, height: 36))
         for (button, key, label, frame, action) in [
-            (choose, "accountChoice", "@\(username)", NSRect(x: 0, y: 0, width: 228, height: 36), #selector(selectAccount)),
-            (remove, "accountRemove", "Remove @\(username)", NSRect(x: 228, y: 0, width: 36, height: 36), #selector(removeAccount))
+            (choose, "accountChoice", self.displayName, NSRect(x: 0, y: 0, width: 228, height: 36), #selector(selectAccount)),
+            (remove, "accountRemove", "Remove \(self.displayName)", NSRect(x: 228, y: 0, width: 36, height: 36), #selector(removeAccount))
         ] {
             button.key = key
             button.title = label
@@ -430,6 +434,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
     var expires = Date.distantFuture
     var busy = false
     var addingAccount = false
+    var localModels: [[String: Any]] = []
+    var selectedLocalModel = ""
+    var localSetupPending = false
     var accountPopover: NSPopover?
     var pendingBridge: String?
     var refreshing = false
@@ -539,7 +546,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         button.toolTip = title
         if ["connect", "login", "disconnect"].contains(key) {
             let actionTitle = key == "disconnect" ? "Disconnect" :
-                key == "login" ? "Connect with access token" : "Connect with GitHub"
+                key == "login" ? "Connect with access token" : "Add account"
             button.toolTip = actionTitle
             button.setAccessibilityHelp(actionTitle)
         }
@@ -590,7 +597,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         title.font = .systemFont(ofSize: 20, weight: .bold)
         add(title, key: "title", group: "all", y: 25, height: 27, x: 62, width: 136)
         button("Settings", key: "settings", group: "all", y: 24, action: #selector(settingsView), x: 336, width: 32, height: 32)
-        button("Not Connected", key: "connect", group: "sign-in", y: 244, action: #selector(connect), x: 95, width: 210, height: 42)
+        button("Not Connected", key: "connect", group: "sign-in", y: 244, action: #selector(addAccount), x: 95, width: 210, height: 42)
         let hint = "Have an access token?"
         let link = "Paste it instead"
         let hintFont = NSFont.systemFont(ofSize: 12)
@@ -600,6 +607,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         label(hint, key: "tokenTeaser", group: "idle", y: 215, height: 24, x: hintX, width: hintWidth, size: 12)
         button(link, key: "tokenView", group: "idle", y: 211, action: #selector(tokenView),
                x: hintX + hintWidth + 6, width: linkWidth, height: 24)
+        button("GitHub", key: "addGitHub", group: "add-account", y: 112, action: #selector(connect), x: 40, width: 320, height: 38)
+        label("Local model", key: "localLabel", group: "add-account", y: 171, height: 20, x: 40, width: 320, size: 13)
+        let modelPicker = AppearanceSelector(frame: .zero, pullsDown: false)
+        modelPicker.target = self
+        modelPicker.action = #selector(selectLocalModel(_:))
+        modelPicker.setAccessibilityLabel("Local model")
+        add(modelPicker, key: "localModel", group: "add-account", y: 199, height: 32, x: 40, width: 320)
+        label("", key: "localProgressText", group: "add-account", y: 242, height: 24, x: 40, width: 320, size: 12)
+        let progress = NSProgressIndicator()
+        progress.style = .bar
+        progress.isIndeterminate = false
+        progress.minValue = 0
+        progress.maxValue = 1
+        add(progress, key: "localProgress", group: "add-account", y: 274, height: 8, x: 40, width: 320)
+        button("Add", key: "addLocal", group: "add-account", y: 298, action: #selector(addLocalModel), x: 240, width: 120, height: 34)
         label("Access token", key: "tokenLabel", group: "token", y: 197, height: 12, x: 60, width: 280, size: 11)
         let token = NSSecureTextField()
         token.placeholderString = "Paste your access token"
@@ -786,6 +808,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
                 } else if self.currentView == "starting" {
                     self.currentView = value["connected"] as? Bool == true ? "connected" : "idle"
                 }
+                let local = value["local"] as? [String: Any] ?? [:]
+                if self.localSetupPending, local["stage"] as? String == "Ready" {
+                    self.localSetupPending = false
+                    self.addingAccount = false
+                    if self.currentView != "settings" { self.currentView = "connected" }
+                    self.notice = ""
+                }
                 if self.bridgeReady, !self.addingAccount, self.currentView != "settings", value["connected"] as? Bool == true { self.currentView = "connected" }
                 // !["settings", "client", "server"].contains(self.currentView)
                 if self.bridgeReady, self.currentView == "connected", value["connected"] as? Bool != true { self.currentView = "idle" }
@@ -842,8 +871,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
                         self.actionFocus = self.controls["copy"]
                     } else { self.notice = "GitHub did not return a device code." }
                 case "/api/token-login", "/api/poll", "/api/accounts/switch":
-                    if value["ok"] as? Bool == true {
+                    if value["preparing"] as? Bool == true {
+                        self.addingAccount = true
+                        self.localSetupPending = true
+                        self.currentView = "add-account"
+                        self.loadLocalModels()
+                    } else if value["ok"] as? Bool == true {
                         self.addingAccount = false
+                        self.localSetupPending = false
                         self.deviceCode = ""
                         (self.controls["token"] as? NSSecureTextField)?.stringValue = ""
                         self.currentView = "connected"
@@ -862,6 +897,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
                                        "no_copilot": "This account has no GitHub Copilot access.",
                                        "network": "Could not connect to GitHub."][value["reason"] as? String ?? ""] ?? "Sign-in failed."
                     }
+                case "/api/local/add":
+                    self.localSetupPending = true
+                    self.refresh()
+                case "/api/local/cancel":
+                    self.localSetupPending = false
+                    self.addingAccount = false
+                    self.currentView = self.status["connected"] as? Bool == true ? "connected" : "idle"
+                    self.refresh()
                 case "/api/settings":
                     self.settings = value
                     self.closeToTray = value["closeToTray"] as? Bool ?? self.closeToTray
@@ -986,6 +1029,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         let noticeFrame: NSRect
         switch currentView {
         case "connected": noticeFrame = NSRect(x: 32, y: 24, width: 248, height: 32)
+        case "add-account": noticeFrame = NSRect(x: 40, y: 298, width: 190, height: 50)
         case "settings": noticeFrame = NSRect(x: 32, y: 70, width: 336, height: 32)
         // case "client", "server": noticeFrame = NSRect(x: 32, y: 316, width: 336, height: 48)
         case "token": noticeFrame = NSRect(x: 32, y: 308, width: 336, height: 40)
@@ -1017,7 +1061,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         if let connect = controls["connect"] as? NSButton {
             if currentView == "starting" { connect.isHidden = false }
             connect.title = currentView == "starting"
-                ? (!notice.isEmpty || !refreshError.isEmpty ? "Unavailable" : "Starting...") : "Not Connected"
+                ? (!notice.isEmpty || !refreshError.isEmpty ? "Unavailable" : "Starting...") : "Add account"
             connect.setAccessibilityLabel(connect.title)
         }
         let token = controls["token"] as? NSSecureTextField
@@ -1050,12 +1094,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
             (controls[key] as? NSButton)?.state = settings[field] as? Bool == true ? .on : .off
         }
         // let prefix = status["authMethod"] as? String == "remote" ? "Server: " : "@"
-        let prefix = "@"
+        let prefix = status["authMethod"] as? String == "local" ? "" : "@"
         setLabel("account", "\(prefix)\(status["username"] as? String ?? "")")
         (controls["account"] as? NSTextField)?.textColor = colors.accent
         (controls["settingsTitle"] as? NSTextField)?.textColor = colors.text
         (controls["appearanceLabel"] as? NSTextField)?.textColor = colors.text
-        for key in ["usageLabel", "usageValue"] { controls[key]?.isHidden = currentView != "connected" || usageValues == nil }
+        let localAccount = status["authMethod"] as? String == "local"
+        for key in ["usageLabel", "usageValue"] { controls[key]?.isHidden = currentView != "connected" || (!localAccount && usageValues == nil) }
+        if localAccount {
+            setLabel("usageLabel", "Local · oMLX")
+            setLabel("usageValue", "TurboQuant 4-bit")
+            controls["usageValue"]?.toolTip = "TurboQuant 4-bit on supported layers; final attention layer stays at native precision."
+        } else { setLabel("usageLabel", "AI credits this cycle") }
         if let (used, total) = usageValues {
             let formatter = NumberFormatter()
             formatter.numberStyle = .decimal
@@ -1082,7 +1132,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         }
         let version = status["version"] as? String ?? Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
         (controls["project"] as? NSButton)?.title = "v\(version)"
-        let defaultKey = ["idle": "connect", "token": "login", /* "client": "remoteConnect", "server": "serverToggle", */ "settings": "done"][currentView]
+        renderLocalSetup()
+        let defaultKey = ["add-account": "addLocal", "idle": "connect", "token": "login", /* "client": "remoteConnect", "server": "serverToggle", */ "settings": "done"][currentView]
         window.defaultButtonCell = defaultKey.flatMap { (controls[$0] as? NSButton)?.cell as? NSButtonCell }
         window.contentView?.needsDisplay = true
     }
@@ -1093,7 +1144,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         action("/api/poll", ["device_code": deviceCode])
     }
 
-    @objc func connect() { action("/api/start") }
+    @objc func connect() { addingAccount = true; action("/api/start") }
     @objc func tokenView() { currentView = "token"; notice = ""; render(); window.makeFirstResponder(controls["token"]) }
     @objc func login() {
         let token = (controls["token"] as? NSSecureTextField)?.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -1115,6 +1166,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         list.onCancel = content.onCancel
         for (index, account) in accounts.enumerated() {
             list.addSubview(AccountRow(username: account["username"] as? String ?? "",
+                                       displayName: account["displayName"] as? String,
                                        selected: account["selected"] as? Bool == true,
                                        owner: self, y: CGFloat(index) * 36))
         }
@@ -1177,19 +1229,86 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
     func accountAction(_ path: String, _ username: String) {
         guard !busy, !terminating else { return }
         accountPopover?.close()
+        if path == "/api/accounts/switch", username.hasPrefix("local:") {
+            selectedLocalModel = String(username.dropFirst(6))
+        }
         action(path, ["username": username])
     }
     @objc func addAccount() {
         guard !busy, !terminating else { return }
         accountPopover?.close()
         addingAccount = true
-        currentView = "idle"
+        currentView = "add-account"
+        notice = ""
+        selectedLocalModel = ""
+        render()
+        loadLocalModels()
+        window.makeFirstResponder(controls["addGitHub"])
+    }
+    func loadLocalModels() {
+        request("/api/local/models") { [weak self] value, error in
+            guard let self else { return }
+            if let value {
+                self.localModels = value["models"] as? [[String: Any]] ?? []
+                if self.selectedLocalModel.isEmpty { self.selectedLocalModel = value["recommended"] as? String ?? "" }
+                if let picker = self.controls["localModel"] as? NSPopUpButton {
+                    picker.removeAllItems()
+                    picker.autoenablesItems = false
+                    for model in self.localModels {
+                        let title = (model["name"] as? String ?? "") + (model["recommended"] as? Bool == true ? " · Recommended" : "")
+                        picker.addItem(withTitle: title)
+                        picker.lastItem?.representedObject = model["id"]
+                        picker.lastItem?.isEnabled = model["available"] as? Bool == true
+                        picker.lastItem?.toolTip = model["reason"] as? String
+                    }
+                    picker.selectItem(at: self.localModels.firstIndex { $0["id"] as? String == self.selectedLocalModel } ?? -1)
+                }
+                if value["supported"] as? Bool == false { self.notice = value["error"] as? String ?? "Local models are unavailable" }
+            } else if let error { self.notice = error }
+            self.render()
+        }
+    }
+    @objc func selectLocalModel(_ sender: NSPopUpButton) {
+        selectedLocalModel = sender.selectedItem?.representedObject as? String ?? ""
         notice = ""
         render()
-        window.makeFirstResponder(controls["connect"])
+    }
+    @objc func addLocalModel() {
+        guard !selectedLocalModel.isEmpty else { return }
+        action("/api/local/add", ["model": selectedLocalModel])
+    }
+    func renderLocalSetup() {
+        guard currentView == "add-account" else { return }
+        let local = status["local"] as? [String: Any] ?? [:]
+        let stage = local["stage"] as? String ?? ""
+        let preparing = localSetupPending && !["Error", "Paused", "Ready"].contains(stage)
+        (controls["localModel"] as? NSPopUpButton)?.isEnabled = !busy && !preparing
+        (controls["addGitHub"] as? NSButton)?.isEnabled = !busy && !preparing
+        let selected = localModels.first { $0["id"] as? String == selectedLocalModel }
+        if let add = controls["addLocal"] as? NSButton {
+            add.isEnabled = !busy && !preparing && selected?["available"] as? Bool == true
+            add.title = localSetupPending && stage == "Error" ? "Retry" : "Add"
+        }
+        var text = ""
+        if localSetupPending {
+            let downloaded = (local["downloaded"] as? NSNumber)?.int64Value ?? 0
+            let total = (local["total"] as? NSNumber)?.int64Value ?? 0
+            text = stage
+            if total > 0 { text += " · " + ByteCountFormatter.string(fromByteCount: downloaded, countStyle: .file) + " / " + ByteCountFormatter.string(fromByteCount: total, countStyle: .file) }
+            if let progress = controls["localProgress"] as? NSProgressIndicator {
+                progress.isIndeterminate = total <= 0 && preparing
+                if progress.isIndeterminate { progress.startAnimation(nil) } else { progress.stopAnimation(nil); progress.doubleValue = total > 0 ? Double(downloaded) / Double(total) : 0 }
+            }
+            if stage == "Error" { setLabel("notice", local["error"] as? String ?? "Local setup failed"); (controls["notice"] as? NSTextField)?.textColor = NativeColors.current.danger }
+        } else if let bytes = selected?["bytes"] as? NSNumber {
+            text = ByteCountFormatter.string(fromByteCount: bytes.int64Value, countStyle: .file)
+        }
+        setLabel("localProgressText", text)
+        controls["localProgress"]?.isHidden = !preparing
     }
     @objc func cancelAddAccount() {
         guard !busy else { return }
+        if localSetupPending { action("/api/local/cancel"); return }
         addingAccount = false
         deviceCode = ""
         (controls["token"] as? NSTextField)?.stringValue = ""

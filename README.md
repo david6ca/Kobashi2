@@ -1,6 +1,6 @@
 # Kobashi2
 
-Route Claude Code, OpenAI Codex, and the GitHub Copilot app through your GitHub Copilot subscription.
+Route Claude Code, OpenAI Codex, and the GitHub Copilot app through GitHub Copilot or managed local models.
 
 Kobashi2 is a local bridge that lets [Claude Code](https://www.anthropic.com/claude-code), [OpenAI Codex](https://openai.com/index/introducing-gpt-5-3-codex/), and the [GitHub Copilot app](https://github.com/github/app) use your existing GitHub Copilot subscription instead of separate Anthropic or OpenAI API keys. The Copilot app can keep its own GitHub login while using the account connected to Kobashi2 for model inference.
 
@@ -74,6 +74,27 @@ Open **Settings** from the main window to change these options:
 
 Click the Settings icon again or **Done** to return to the main screen.
 
+### Local models on Mac
+
+On Apple Silicon with macOS 15 or later, choose **Add account**, then select a
+local model and click **Add**. The recommended model is selected automatically
+using the Mac's available memory. **GitHub** opens the existing sign-in flow.
+
+Kobashi2 installs its own oMLX runtime and Python environment, downloads the model,
+and prepares inference without asking for a Base URL, API key, or terminal command.
+Setup runs in the background with progress and cancellation; retry resumes model
+downloads. The current account stays selected until the new model is ready.
+
+Local models appear alongside saved GitHub accounts and can power Claude, Codex,
+and Copilot. The selected model uses 4-bit TurboQuant KV compression on supported
+layers, with the final attention layer retained at native precision. Local
+inference never falls back to a cloud model. Existing client logins are preserved.
+Codex may need a full restart to reload its model picker after the first setup.
+
+Runtime packages, models, and setup logs are stored under `~/.kobashi/local`.
+Removing a local account keeps its downloaded model. Local oMLX support is Mac-only;
+Windows and Intel Macs retain GitHub Copilot sources.
+
 ### Multiple accounts
 
 Open the arrow beside **Connected** to see saved GitHub accounts. The current
@@ -129,7 +150,7 @@ tray icon or register startup.
 ## Requirements
 
 - **macOS 13+** (Apple Silicon or Intel) or **Windows 10/11** (x64)
-- **GitHub Copilot subscription** (Individual, Business, or Enterprise)
+- **GitHub Copilot subscription** for GitHub sources, or an **Apple Silicon Mac with macOS 15+** for local models
 - **Claude Code**, **OpenAI Codex** CLI / VS Code extension, or **GitHub Copilot app** with BYOK support
 
 ## Features

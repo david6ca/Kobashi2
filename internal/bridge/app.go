@@ -36,13 +36,15 @@ type Settings struct {
 	CloseToTray  bool `json:"closeToTray"`
 }
 type session struct {
-	Token    string    `json:"github_token"`
-	Username string    `json:"username"`
-	Codex    bool      `json:"codexEnabled"`
-	Claude   bool      `json:"claudeEnabled"`
-	Copilot  bool      `json:"copilotEnabled"`
-	Method   string    `json:"authMethod"`
-	Accounts []account `json:"accounts,omitempty"`
+	Token       string    `json:"github_token"`
+	Username    string    `json:"username"`
+	Codex       bool      `json:"codexEnabled"`
+	Claude      bool      `json:"claudeEnabled"`
+	Copilot     bool      `json:"copilotEnabled"`
+	Method      string    `json:"authMethod"`
+	Accounts    []account `json:"accounts,omitempty"`
+	LocalModel  string    `json:"localModel,omitempty"`
+	LocalModels []string  `json:"localModels,omitempty"`
 	// RemoteURL   string `json:"remoteURL,omitempty"`
 	// RemoteToken string `json:"remoteToken,omitempty"`
 }
@@ -53,7 +55,7 @@ type deviceLogin struct {
 }
 
 func (s session) active() bool {
-	return s.Token != ""
+	return s.Token != "" || s.LocalModel != ""
 	// || (s.RemoteURL != "" && s.RemoteToken != "")
 }
 
@@ -61,6 +63,8 @@ type App struct {
 	options                       Options
 	mu                            sync.RWMutex
 	actions, tokenMu, discoveryMu sync.Mutex
+	routes                        sync.RWMutex
+	local                         *localManager
 	state                         session
 	pendingLogin                  deviceLogin
 	ready                         bool
@@ -125,6 +129,7 @@ func New(options Options) (*App, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	a := &App{options: options, ctx: ctx, cancel: cancel, client: options.Client, settings: Settings{CloseToTray: true}, appearance: "system", closed: make(chan struct{})}
 	a.models = newModelRegistry(a)
+	a.local = newLocalManager(a)
 	/*
 		a.remoteClient = &http.Client{Transport: &http.Transport{
 			Proxy: nil, DialContext: (&net.Dialer{Timeout: 8 * time.Second, KeepAlive: 15 * time.Second}).DialContext,
@@ -280,13 +285,20 @@ func (a *App) initialize() {
 	if _, ok := fields["codexEnabled"]; !ok {
 		saved.Codex = fields["bridgeEnabled"] != false
 	}
-	if saved.Method != "token" { // && saved.Method != "remote"
+	if saved.Method != "token" && saved.Method != "local" { // && saved.Method != "remote"
 		saved.Method = "device"
 	}
 	a.mu.Lock()
 	a.state = saved
 	a.mu.Unlock()
-	a.models.setAccount(saved.Token)
+	if saved.LocalModel != "" {
+		if err = a.local.restore(saved.LocalModel); err != nil {
+			a.report(err)
+			return
+		}
+	} else {
+		a.models.setAccount(saved.Token)
+	}
 	if saved.Codex {
 		if err = a.injectCodex(); err != nil {
 			a.report(err)
@@ -360,6 +372,7 @@ func (a *App) Stop() error {
 	a.stopOnce.Do(func() {
 		log.Print("Kobashi2 stopping")
 		a.cancel()
+		a.local.close()
 		a.models.pause()
 		// a.actions.Lock()
 		// a.stopShared()
@@ -392,9 +405,14 @@ func (a *App) Stop() error {
 func (a *App) snapshot() session  { a.mu.RLock(); defer a.mu.RUnlock(); return a.state }
 func (a *App) saveSession() error { return writeJSON(a.path("session.json"), a.snapshot()) }
 func (a *App) disconnect() error {
+	a.local.cancelSetup()
 	return a.disconnectAccounts(savedAccounts(a.snapshot()))
 }
 func (a *App) disconnectAccounts(accounts []account) error {
+	if !a.routes.TryLock() {
+		return errors.New("A request is running. Try again when it finishes")
+	}
+	defer a.routes.Unlock()
 	state := a.snapshot()
 	var err error
 	if state.Copilot {
@@ -424,8 +442,8 @@ func (a *App) disconnectAccounts(accounts []account) error {
 		}
 		a.stopShared()
 	*/
-	next := session{Method: state.Method, Accounts: accounts}
-	if len(accounts) > 0 {
+	next := session{Method: state.Method, Accounts: accounts, LocalModels: state.LocalModels}
+	if len(accounts) > 0 || len(next.LocalModels) > 0 {
 		err = writeJSON(a.path("session.json"), next)
 	} else {
 		err = removeOptional(a.path("session.json"))
@@ -443,6 +461,7 @@ func (a *App) disconnectAccounts(accounts []account) error {
 	a.accountGeneration++
 	a.mu.Unlock()
 	a.models.setAccount("")
+	a.local.stopRuntime()
 	return removeOptional(filepath.Join(a.options.Home, ".codex", "ccb-session.json"))
 }
 func headers(token string) http.Header {
@@ -565,8 +584,19 @@ func (a *App) validateToken(ctx context.Context, token, method string) (object, 
 	if status != 200 || str(value["token"]) == "" {
 		return object{"ok": false, "reason": "github_error"}, fmt.Errorf("Copilot returned %d", status)
 	}
+	a.local.cancelSetup()
+	if !a.routes.TryLock() {
+		return nil, errors.New("A request is running. Try again when it finishes")
+	}
+	defer a.routes.Unlock()
 	previous := a.snapshot()
+	if previous.LocalModel != "" && previous.Copilot {
+		if err = a.restoreCopilot(); err != nil {
+			return nil, err
+		}
+	}
 	next := previous
+	next.LocalModel = ""
 	next.Token, next.Username, next.Method = token, str(who["login"]), method
 	if !previous.active() {
 		next.Codex, next.Claude = true, true
@@ -588,13 +618,17 @@ func (a *App) validateToken(ctx context.Context, token, method string) (object, 
 	a.accountGeneration++
 	a.mu.Unlock()
 	a.models.setAccount(token)
-	if !previous.active() {
+	if !previous.active() || previous.LocalModel != "" {
 		if err = a.injectCodex(); err != nil {
 			return nil, err
 		}
 		if err = a.injectClaude(); err != nil {
 			return nil, err
 		}
+	}
+	if previous.LocalModel != "" {
+		a.local.stopRuntime()
+		a.copilotRouting = copilotRouting{}
 	}
 	return object{"ok": true, "username": who["login"]}, nil
 }
@@ -618,6 +652,8 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == "GET" {
 		switch r.URL.Path {
+		case "/api/local/models":
+			respond(w, 200, a.local.catalog())
 		case "/api/settings":
 			a.mu.RLock()
 			settings, errText := a.settings, a.settingsError
@@ -633,6 +669,7 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 			// status["remoteURL"] = s.RemoteURL
 			// status["server"] = object{"enabled": a.shared.Enabled, "running": a.sharedServer != nil, "listen": a.shared.Listen}
 			a.mu.RUnlock()
+			status["local"] = a.local.status()
 			status["codexModels"] = a.models.status()
 			respond(w, 200, status)
 		/*
@@ -659,6 +696,11 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 		go a.Stop()
 		return
 	}
+	if r.URL.Path == "/api/local/cancel" {
+		a.local.cancelSetup()
+		respond(w, 200, object{"ok": true})
+		return
+	}
 	a.actions.Lock()
 	defer a.actions.Unlock()
 	if a.ctx.Err() != nil {
@@ -668,6 +710,15 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 	var result any = object{"ok": true}
 	var err error
 	switch r.URL.Path {
+	case "/api/local/add":
+		var body object
+		body, err = readObject(r.Body, 4096)
+		if err == nil {
+			err = a.local.add(str(body["model"]))
+			result = object{"ok": err == nil}
+		}
+	case "/api/local/cancel":
+		a.local.cancelSetup()
 	case "/api/accounts/switch", "/api/accounts/delete":
 		var body object
 		body, err = readObject(r.Body, 4096)

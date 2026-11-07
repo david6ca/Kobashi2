@@ -25,7 +25,7 @@ func upsertAccount(accounts []account, value account) []account {
 
 func savedAccounts(s session) []account {
 	accounts := append([]account(nil), s.Accounts...)
-	if s.active() {
+	if s.Token != "" {
 		accounts = upsertAccount(accounts, account{Token: s.Token, Username: s.Username, Method: s.Method})
 	}
 	return accounts
@@ -37,12 +37,20 @@ func publicAccounts(s session) []object {
 		result = append(result, object{"username": account.Username,
 			"selected": s.active() && strings.EqualFold(account.Username, s.Username)})
 	}
+	for _, id := range s.LocalModels {
+		if model, ok := findLocalModel(id); ok {
+			result = append(result, object{"username": "local:" + id, "displayName": model.Name, "provider": "local", "selected": s.LocalModel == id})
+		}
+	}
 	return result
 }
 
 func (a *App) switchAccount(ctx context.Context, username string) (object, error) {
 	if username == "" {
 		return nil, errors.New("account username is required")
+	}
+	if strings.HasPrefix(username, "local:") {
+		return a.local.switchModel(ctx, strings.TrimPrefix(username, "local:"))
 	}
 	s := a.snapshot()
 	for _, account := range savedAccounts(s) {
@@ -59,6 +67,9 @@ func (a *App) switchAccount(ctx context.Context, username string) (object, error
 func (a *App) deleteAccount(username string) error {
 	if username == "" {
 		return errors.New("account username is required")
+	}
+	if strings.HasPrefix(username, "local:") {
+		return a.local.deleteModel(strings.TrimPrefix(username, "local:"))
 	}
 	s := a.snapshot()
 	next := []account{}

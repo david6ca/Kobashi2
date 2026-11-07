@@ -31,6 +31,8 @@ func (a *App) copilotApp(w http.ResponseWriter, r *http.Request) {
 	a.openAI(w, r, true)
 }
 func (a *App) openAI(w http.ResponseWriter, r *http.Request, copilotApp bool) {
+	a.routes.RLock()
+	defer a.routes.RUnlock()
 	state := a.snapshot()
 	name, enabled := "Codex", state.Codex
 	// protocol := "codex"
@@ -49,8 +51,12 @@ func (a *App) openAI(w http.ResponseWriter, r *http.Request, copilotApp bool) {
 			return
 		}
 	*/
-	if state.Token == "" || !enabled {
+	if !state.active() || !enabled {
 		respond(w, 401, object{"error": name + " bridge not active"})
+		return
+	}
+	if state.LocalModel != "" {
+		a.local.proxy(w, r, state, false)
 		return
 	}
 	if r.Method == "GET" && r.URL.Path == "/v1/models" {
@@ -274,6 +280,8 @@ func claudeError(w http.ResponseWriter, status int, message string) {
 func (a *App) claude(w http.ResponseWriter, r *http.Request) {
 	w, r, done := logProxyRequest(w, r, "Claude")
 	defer done()
+	a.routes.RLock()
+	defer a.routes.RUnlock()
 	state := a.snapshot()
 	/*
 		if state.RemoteURL != "" {
@@ -281,8 +289,12 @@ func (a *App) claude(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	*/
-	if state.Token == "" || !state.Claude {
+	if !state.active() || !state.Claude {
 		claudeError(w, 401, "Claude bridge not active")
+		return
+	}
+	if state.LocalModel != "" {
+		a.local.proxy(w, r, state, true)
 		return
 	}
 	if r.Method == "GET" && r.URL.Path == "/v1/models" {

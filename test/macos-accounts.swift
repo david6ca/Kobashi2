@@ -30,6 +30,13 @@ class AccountCheckDelegate: AppDelegate {
         switch path {
         case "/api/status": result = fixture
         case "/api/settings": result = ["closeToTray": true]
+        case "/api/local/models": result = ["supported": true, "recommended": "qwen3-4b", "models": [
+            ["id": "qwen3-4b", "name": "Qwen3 4B", "bytes": 2500000000, "recommended": true, "available": true],
+            ["id": "qwen3-8b", "name": "Qwen3 8B", "bytes": 5000000000, "available": true],
+            ["id": "qwen3-coder-30b", "name": "Qwen3-Coder 30B", "available": false, "reason": "Not enough available memory"]
+        ]]
+        case "/api/local/add": fixture["local"] = ["model": body?["model"] ?? "", "stage": "Downloading", "downloaded": 500000000, "total": 2500000000]
+        case "/api/local/cancel": fixture["local"] = ["stage": "Paused"]
         case "/api/accounts/switch":
             let username = body?["username"] as? String ?? ""
             fixture["username"] = username
@@ -54,6 +61,9 @@ class AccountCheckDelegate: AppDelegate {
     override func showError(_ message: String) { check(false, message) }
     override func showAccounts() {
         super.showAccounts()
+        // The script dismisses popovers explicitly. External app focus changes
+        // must not close a test popup between its scheduled mouse/key actions.
+        accountPopover?.behavior = .applicationDefined
         if accountPopover?.isShown == true { popupOpenedAt = ProcessInfo.processInfo.systemUptime }
     }
     func later(_ body: @escaping () -> Void) {
@@ -148,9 +158,34 @@ class AccountCheckDelegate: AppDelegate {
                     content.subviews.compactMap { $0 as? NSButton }.first!.performClick(nil)
                     self.refresh()
                     self.later {
-                        check(self.addingAccount && self.currentView == "idle" &&
+                        check(self.addingAccount && self.currentView == "add-account" &&
                               self.status["connected"] as? Bool == true && self.controls["cancelAccount"]?.isHidden == false,
                               "Add account keeps the live connection and survives status polling")
+                        let picker = self.controls["localModel"] as! NSPopUpButton
+                        check(self.selectedLocalModel == "qwen3-4b" && picker.selectedItem?.title.contains("Recommended") == true,
+                              "Add account selects the recommended local model automatically")
+                        check(picker.itemArray.count == 3 && !picker.itemArray[2].isEnabled && self.controls["addGitHub"]?.isHidden == false,
+                              "GitHub and local models share the add flow; models that do not fit are disabled")
+                        picker.selectItem(at: 1)
+                        self.selectLocalModel(picker)
+                        self.addLocalModel()
+                        self.later {
+                            check(self.requests.last!.0 == "/api/local/add" && self.requests.last!.1["model"] as? String == "qwen3-8b",
+                                  "Adding a model starts setup with only its identifier")
+                            check(self.localSetupPending && self.currentView == "add-account" && self.status["connected"] as? Bool == true,
+                                  "Local download preserves the current connection")
+                            check(!(self.controls["addLocal"] as! NSButton).isEnabled && self.controls["localProgress"]?.isHidden == false,
+                                  "Setup displays progress and prevents duplicate installation")
+                            self.cancelAddAccount()
+                            self.later { self.checkCancelAndContinue() }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    func checkCancelAndContinue() {
+                        check(requests.last!.0 == "/api/local/cancel" && !localSetupPending, "Cancel stops the pending setup")
                         self.tokenView()
                         (self.controls["token"] as! NSTextField).stringValue = "temporary-input"
                         self.cancelAddAccount()
@@ -159,10 +194,6 @@ class AccountCheckDelegate: AppDelegate {
                               self.window.firstResponder === self.controls["accounts"],
                               "Cancel clears token input and returns focus to the split button")
                         self.checkLongList()
-                    }
-                }
-            }
-        }
     }
     func checkLongList() {
         status["accounts"] = (0..<12).map { ["username": "account-\($0)", "selected": $0 == 0] as [String: Any] }

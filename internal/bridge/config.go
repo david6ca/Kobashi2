@@ -93,25 +93,32 @@ func (a *App) injectCodex() error {
 			}
 		} else {
 	*/
-	a.models.setAccount(state.Token)
-	if len(a.models.visible()) == 0 {
-		if err := a.models.ensureSession(a.ctx); err != nil {
+	if state.LocalModel != "" {
+		if err := a.local.writeCatalog(state.LocalModel); err != nil {
 			return err
 		}
-		a.models.wg.Wait()
+	} else {
+		a.models.setAccount(state.Token)
+		if len(a.models.visible()) == 0 {
+			if err := a.models.ensureSession(a.ctx); err != nil {
+				return err
+			}
+			a.models.wg.Wait()
+		}
 	}
-	// }
 	if a.ctx.Err() != nil {
 		return a.ctx.Err()
 	}
-	if current := a.snapshot(); current.Token != state.Token || !current.Codex {
+	if current := a.snapshot(); current.Token != state.Token || current.LocalModel != state.LocalModel || !current.Codex {
 		// || current.RemoteURL != state.RemoteURL || current.RemoteToken != state.RemoteToken
 		return errors.New("account changed during Codex preparation")
 	}
 	// if state.RemoteURL == "" {
-	a.models.mu.Lock()
-	a.models.persistLocked()
-	a.models.mu.Unlock()
+	if state.LocalModel == "" {
+		a.models.mu.Lock()
+		a.models.persistLocked()
+		a.models.mu.Unlock()
+	}
 	// }
 	if err := os.MkdirAll(a.options.CodexHome, 0700); err != nil {
 		return err
@@ -135,7 +142,15 @@ func (a *App) injectCodex() error {
 			source = []byte(restoreConfig(string(source), "", a.path("codex-model-catalog.json")))
 		}
 	}
-	if err = writeAtomic(configPath, []byte(injectConfig(string(source), a.options.Ports.Codex, a.path("codex-model-catalog.json")))); err != nil {
+	backup, err := readOptional(configPath + ".bak")
+	if err != nil {
+		return err
+	}
+	configured := restoreLocalModelConfig(string(source), string(backup))
+	if state.LocalModel != "" {
+		configured = injectLocalModelConfig(configured, state.LocalModel)
+	}
+	if err = writeAtomic(configPath, []byte(injectConfig(configured, a.options.Ports.Codex, a.path("codex-model-catalog.json")))); err != nil {
 		return err
 	}
 	if err = a.injectEnvironment(map[string]string{"NO_PROXY": "127.0.0.1,localhost"}); err != nil {
@@ -163,7 +178,7 @@ func (a *App) restoreCodex() error {
 	}
 	if live != nil {
 		// Always preserve the file, including an empty user baseline.
-		err = writeAtomic(configPath, []byte(restoreConfig(string(live), string(backup), a.path("codex-model-catalog.json"))))
+		err = writeAtomic(configPath, []byte(restoreConfig(restoreLocalModelConfig(string(live), string(backup)), string(backup), a.path("codex-model-catalog.json"))))
 	} else if backup != nil {
 		recovered := string(backup)
 		if managedConfig(recovered) {

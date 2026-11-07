@@ -102,7 +102,7 @@ func (a *App) startWatcher() {
 			var previous map[string]bool
 			poll := func() {
 				state := a.snapshot()
-				if !state.active() || !state.Codex {
+				if !state.active() || !state.Codex || state.LocalModel != "" {
 					previous = nil
 					return
 				}

@@ -523,6 +523,9 @@ func (m *modelRegistry) beginRound(waitCtx context.Context, awaiting bool) error
 	return nil
 }
 func (a *App) discover(ctx context.Context, force bool) ([]object, error) {
+	if s := a.snapshot(); s.LocalModel != "" {
+		return a.local.models(s.LocalModel), nil
+	}
 	a.discoveryMu.Lock()
 	defer a.discoveryMu.Unlock()
 	a.mu.RLock()
