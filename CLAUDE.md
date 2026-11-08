@@ -16,9 +16,10 @@ or shift the layout. Keep actionable errors visible. Settings uses label-only
 Start at login and Close to system tray rows, without description text.
 Appearance belongs in Settings with Auto, Light, and Dark; Auto follows the
 system. Never put a theme toggle back in the main header.
-Both light and dark themes use purple accents and purple-tinted neutrals.
+Both light and dark themes use Pomegram berry pink (#E94F76) and coral orange
+(#FF9166), with warm tinted neutrals and deeper shades for readable small text.
 Functional colors stay semantic: green for active/connected, red for errors,
-neutral gray for paused/disconnected. Never recolor status indicators purple.
+neutral gray for paused/disconnected. Never recolor status indicators to brand colors.
 Preserve original brand artwork and system high-contrast colors.
 Main and Settings share one fixed window size; keep the version footer anchored.
 Header-to-account, account-to-client, and client-to-version gaps are 16 logical

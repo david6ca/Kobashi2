@@ -86,7 +86,7 @@ class AccountCheckDelegate: AppDelegate {
         check(main.frame.maxX == arrow.frame.minX && arrow.frame.width == 28 &&
               arrow.frame.maxX == 349, "Connected has adjacent primary and dropdown hit targets")
         check(window.contentView?.bounds.size == windowSize &&
-              controls["claude"]?.frame.minY == 184 && controls["project"]?.frame.minY == footerY,
+              controls["codex"]?.frame.minY == 184 && controls["project"]?.frame.minY == footerY,
               "The split button keeps the cards and footer fixed")
         let location = arrow.convert(NSPoint(x: 14, y: 14), to: nil)
         check(window.contentView?.hitTest(location) === arrow, "The arrow receives its own mouse clicks")

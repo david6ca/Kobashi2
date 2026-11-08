@@ -415,7 +415,7 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 		if client.Right != int32(windowWidth*w.dpi/96) || client.Bottom != int32(windowHeight*w.dpi/96) {
 			t.Fatalf("connected/%d DPI does not share the fixed Settings size: %v", w.dpi, client)
 		}
-		for id, y := range map[int]int{7: 87, 8: 128, idDisconnect: 87, idClaude: 184, idCodex: 228,
+		for id, y := range map[int]int{7: 87, 8: 128, idDisconnect: 87, idCodex: 184, idClaude: 228,
 			idCopilot: 272, idProject: 338} {
 			var bounds rect
 			proc("GetWindowRect", w.control(id), uintptr(unsafe.Pointer(&bounds)))
@@ -531,14 +531,15 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 			if background != (color.NRGBA{R: byte(want.background >> 16), G: byte(want.background >> 8), B: byte(want.background), A: 255}) {
 				t.Fatalf("%s/%s has an incorrect plain background: %v", theme, view, background)
 			}
-			accent := color.NRGBA{R: byte(want.accent >> 16), G: byte(want.accent >> 8), B: byte(want.accent), A: 255}
 			for _, x := range []int{38, 44, 50} {
-				if screenshot.NRGBAAt(x, 38) != accent {
+				pixel := screenshot.NRGBAAt(x, 38)
+				if pixel.R < 247 || pixel.G < 247 || pixel.B < 247 {
 					t.Fatal("header must render two filled circles joined by a line", theme, view, x)
 				}
 			}
-			if screenshot.NRGBAAt(44, 35) != background || screenshot.NRGBAAt(48, 29) != background {
-				t.Fatal("header still renders a chevron instead of the connection mark", theme, view)
+			tile := screenshot.NRGBAAt(48, 29)
+			if tile.R <= tile.G || tile.R <= tile.B {
+				t.Fatal("header mark must use a Pomegram gradient background", theme, view)
 			}
 			if dir := os.Getenv("KOBASHI_UI_CAPTURE_DIR"); dir != "" {
 				if err := os.MkdirAll(dir, 0700); err != nil {
@@ -760,7 +761,7 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 					if (c.id == idStartup || c.id == idTray) && proc("SendMessageW", c.handle, 0xf0, 0, 0) == 1 {
 						on := color.NRGBA{R: byte(w.palette.on >> 16), G: byte(w.palette.on >> 8), B: byte(w.palette.on), A: 255}
 						if image.NRGBAAt(312*dpi/96, 10*dpi/96) != on {
-							t.Fatal("checked box does not use the contrast-safe purple fill", c.id, theme, dpi)
+							t.Fatal("checked box does not use the contrast-safe berry fill", c.id, theme, dpi)
 						}
 					}
 				}
@@ -934,8 +935,8 @@ func TestNativeThemeContrast(t *testing.T) {
 		colors := themePalette(dark, false)
 		for _, rgb := range []uint32{colors.accent, colors.secondary, colors.on} {
 			r, g, b := rgb>>16, rgb>>8&255, rgb&255
-			if b <= r || r <= g {
-				t.Errorf("theme is not purple: dark=%v color=%06x", dark, rgb)
+			if r <= b || r <= g {
+				t.Errorf("theme is not Pomegram: dark=%v color=%06x", dark, rgb)
 			}
 		}
 		green, gray, red := uint32(0x15803d), uint32(0x6b7280), uint32(0xdc2626)

@@ -131,7 +131,7 @@ Mouse selection adds no thick row border; keyboard focus remains visible around
 the relevant control. The app icon uses two solid circles joined by a line.
 The macOS menu bar uses the same connection mark as a template icon, so macOS
 controls its color for light, dark, and highlighted menu-bar states.
-Both themes use purple accents; active/connected indicators stay green, errors
+Both themes use Pomegram berry-pink and coral-orange accents; active/connected indicators stay green, errors
 stay red, and paused/disconnected indicators stay neutral gray.
 Windows scales the entire window,
 including its frame, with display DPI and keeps all controls visible without scrolling.
@@ -162,7 +162,7 @@ tray icon or register startup.
 - **Copilot Bridge** — independent OpenAI-compatible endpoint with persistent enablement, deferred provider registration, and automatic connection of eligible idle local sessions, preserving the app's GitHub login
 - Auto-injects configs (`~/.claude/settings.json`, `~/.codex/config.toml`) and restores them on disconnect without replacing Codex account login
 - Auto-detects system HTTP(S) proxy — routes only Bridge's upstream traffic through it, leaving other apps untouched
-- Consistent purple light/dark themes with system preference detection
+- Consistent Pomegram light/dark themes with system preference detection
 - Opt-in login startup and close to system tray enabled by default
 - Compact fixed-size window with a plain background
 - Native Win32 and Cocoa clients with no third-party runtime

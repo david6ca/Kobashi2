@@ -43,7 +43,7 @@ class ToggleCheckDelegate: AppDelegate {
         check(pendingBridge == key && busy && notice.isEmpty && controls["notice"]?.isHidden == true,
               "The \(key) toggle has no progress banner")
         check(window.contentView?.bounds.size == NSSize(width: 400, height: 390) &&
-              controls["claude"]?.frame.minY == 184 && controls["codex"]?.frame.minY == 234 &&
+              controls["codex"]?.frame.minY == 184 && controls["claude"]?.frame.minY == 234 &&
               controls["copilot"]?.frame.minY == 284,
               "The pending \(key) toggle does not move or resize the homepage")
         for other in ["codex", "claude", "copilot"] {

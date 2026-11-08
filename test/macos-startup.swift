@@ -91,9 +91,12 @@ class StartupCheckDelegate: AppDelegate {
                 check((self.controls["copilot"] as? NativeButton)?.bridgeStatusText == "Paused",
                       "A disabled Copilot uses the same Paused text as Codex")
                 self.poll(.signedOut) {
-                    check(self.currentView == "idle" && (self.controls["connect"] as? NSButton)?.title == "Not Connected" &&
-                          (self.controls["connect"] as? NSButton)?.isEnabled == true,
-                          "A genuinely signed-out account offers sign-in once ready")
+                    check(self.currentView == "idle" && (self.controls["connect"] as? NSButton)?.title == "Add account" &&
+                          (self.controls["connect"] as? NSButton)?.isEnabled == true &&
+                          self.controls["connect"]?.isHidden == false &&
+                          (self.controls["connect"] as? NSButton)?.accessibilityLabel() == "Add account" &&
+                          (self.controls["connect"] as? NSButton)?.action == #selector(AppDelegate.addAccount),
+                          "A signed-out account offers an accessible Add account action once ready")
                     self.checkFailures()
                 }
             }
@@ -159,7 +162,7 @@ class StartupCheckDelegate: AppDelegate {
             check(!self.refreshError.isEmpty && StartupProtocol.statusRequests == count + 1,
                   "Port conflicts, authentication failures, and invalid responses are not hidden by startup retries")
             check(self.window.contentView?.bounds.size == NSSize(width: 400, height: 390) &&
-                  self.controls["claude"]?.frame.minY == 184 && self.controls["project"]?.frame.minY == footerY,
+                  self.controls["codex"]?.frame.minY == 184 && self.controls["project"]?.frame.minY == footerY,
                   "Startup and error states preserve the fixed window and anchored footer")
             self.checkInvalidResponses(Array(modes.dropFirst()))
         }

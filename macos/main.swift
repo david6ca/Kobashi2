@@ -15,13 +15,22 @@ struct NativeColors {
                 blue: CGFloat(value & 255) / 255, alpha: 1)
     }
 
+    static let brandPink = rgb(0xe94f76)
+    static let brandOrange = rgb(0xff9166)
+
+    static var gradient: NSGradient {
+        let high = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        return NSGradient(starting: high ? current.accent : brandPink,
+                          ending: high ? current.secondary : brandOrange)!
+    }
+
     static var current: NativeColors {
         let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let values: [UInt32] = dark
-            ? [0x100e17, 0xf0ebfa, 0xa69bb8, 0x1c1827, 0x342c46, 0x241e32, 0x302540, 0x15111e,
-               0xc4a5fd, 0xd8b4fe, 0xf85149, 0x756585, 0x7c3aed, 0x292234, 0x322447]
-            : [0xf7f4fc, 0x2b1b3d, 0x6f5f80, 0xfdfaff, 0xe2d8ef, 0xffffff, 0xeee7f8, 0xfaf7ff,
-               0x6d28d9, 0x7c3aed, 0xdc2626, 0x9e88b5, 0x6d28d9, 0xffffff, 0xede4fb]
+            ? [0x191014, 0xfff0f4, 0xbda2ac, 0x261a20, 0x49303a, 0x302129, 0x402934, 0x20151a,
+               0xe94f76, 0xff9166, 0xf85149, 0x8d7179, 0xc9355d, 0x33222a, 0x2c1520]
+            : [0xfff5f3, 0x3d202a, 0x80616c, 0xfffcfb, 0xf0d8dd, 0xffffff, 0xffe6e5, 0xfff9f7,
+               0xb52d52, 0xb94722, 0xdc2626, 0x9c7783, 0xb52d52, 0xffffff, 0xffe7ed]
         let c = values.map(rgb)
         let high = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
         return NativeColors(background: c[0], text: c[1], muted: high ? c[1] : c[2], panel: c[3],
@@ -64,7 +73,6 @@ func nativeText(_ text: String, in rect: NSRect, font: NSFont, color: NSColor,
 }
 
 func gradientText(_ text: String, in rect: NSRect, font: NSFont, centered: Bool = false, spacing: CGFloat = 0) {
-    let colors = NativeColors.current
     let mask = NSImage(size: rect.size, flipped: true) { box in
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = centered ? .center : .left
@@ -73,7 +81,7 @@ func gradientText(_ text: String, in rect: NSRect, font: NSFont, centered: Bool 
         return true
     }
     let image = NSImage(size: rect.size, flipped: true) { box in
-        NSGradient(starting: colors.accent, ending: colors.secondary)!.draw(in: box, angle: 0)
+        NativeColors.gradient.draw(in: box, angle: 0)
         mask.draw(in: box, from: .zero, operation: .destinationIn, fraction: 1)
         return true
     }
@@ -97,17 +105,7 @@ final class FlippedView: NSView {
         c.background.setFill()
         bounds.fill()
         if owner?.hasHeaderNotice != true {
-            let mark = NSBezierPath()
-            mark.move(to: NSPoint(x: 38, y: 38))
-            mark.line(to: NSPoint(x: 50, y: 38))
-            mark.lineWidth = 3
-            mark.lineCapStyle = .round
-            c.accent.setStroke()
-            mark.stroke()
-            c.accent.setFill()
-            for x: CGFloat in [34, 46] {
-                NSBezierPath(ovalIn: NSRect(x: x, y: 34, width: 8, height: 8)).fill()
-            }
+            owner?.drawArtwork("kobashi-icon", in: NSRect(x: 30, y: 24, width: 28, height: 28))
         }
         guard let owner else { return }
         switch owner.currentView {
@@ -128,7 +126,7 @@ final class FlippedView: NSView {
                 if used > 0 {
                     let track = NSBezierPath(roundedRect: NSRect(x: 50, y: 146, width: max(3, min(1, used / total) * 299), height: 5),
                                              xRadius: 3, yRadius: 3)
-                    NSGradient(starting: c.accent, ending: c.secondary)!.draw(in: track, angle: 0)
+                    NativeColors.gradient.draw(in: track, angle: 0)
                 }
             }
         case "device":
@@ -574,7 +572,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
     }
 
     @discardableResult func createWindow() -> Bool {
-        for name in ["github", "claude", "codex"] {
+        for name in ["kobashi-icon", "github", "claude", "codex"] {
             guard let url = Bundle.main.url(forResource: name, withExtension: "png"),
                   let image = NSImage(contentsOf: url) else {
                 showError("The app is missing its \(name) artwork.")
@@ -650,8 +648,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         label("AI credits this cycle", key: "usageLabel", group: "connected", y: 128, height: 16, x: 50, width: 170, size: 11)
         label("", key: "usageValue", group: "connected", y: 128, height: 16, x: 220, width: 129, size: 11)
         (controls["usageValue"] as? NSTextField)?.alignment = .right
-        checkbox("Claude", key: "claude", group: "connected", y: 184, height: 50, action: #selector(toggleClaude), x: 40, width: 320)
-        checkbox("Codex", key: "codex", group: "connected", y: 234, height: 50, action: #selector(toggleCodex), x: 40, width: 320)
+        checkbox("Codex", key: "codex", group: "connected", y: 184, height: 50, action: #selector(toggleCodex), x: 40, width: 320)
+        checkbox("Claude", key: "claude", group: "connected", y: 234, height: 50, action: #selector(toggleClaude), x: 40, width: 320)
         checkbox("Copilot", key: "copilot", group: "connected", y: 284, height: 50, action: #selector(toggleCopilot), x: 40, width: 320)
         label("Settings", key: "settingsTitle", group: "settings", y: 70, height: 32, width: 260, size: 18)
         (controls["settingsTitle"] as? NSTextField)?.font = .systemFont(ofSize: 18, weight: .bold)
