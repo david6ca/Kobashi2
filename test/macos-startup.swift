@@ -73,11 +73,27 @@ class StartupCheckDelegate: AppDelegate {
             let display = window.screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
             check(display?.stringValue == expected, "The test window stays on the requested display")
         }
-        check(currentView == "starting" && (controls["connect"] as? NSButton)?.title == "Starting..." &&
-              (controls["connect"] as? NSButton)?.accessibilityLabel() == "Starting..." &&
-              (controls["connect"] as? NSButton)?.isEnabled == false &&
-              controls["tokenView"]?.isHidden == true,
-              "Loading uses a disabled, accessible status instead of flashing Not Connected")
+        check(currentView == "starting" && (controls["startingText"] as? NSTextField)?.stringValue == "Starting..." &&
+              (controls["startingText"] as? NSTextField)?.accessibilityLabel() == "Starting..." &&
+              (controls["startingText"] as? NSTextField)?.accessibilityRole() == .staticText &&
+              (controls["startingText"] as? NSTextField)?.alignment == .center &&
+              window.firstResponder !== controls["connect"] &&
+              controls.filter { !$0.value.isHidden }.map { $0.key } == ["startingText"],
+              "Startup shows only centered, accessible text without buttons or decorations (visible: \(controls.filter { !$0.value.isHidden }.map { $0.key }), role: \((controls["startingText"] as? NSTextField)?.accessibilityRole() as Any), label: \((controls["startingText"] as? NSTextField)?.accessibilityLabel() as Any))")
+        let content = window.contentView!
+        let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds)!
+        content.cacheDisplay(in: content.bounds, to: bitmap)
+        let pixels = bitmap.converting(to: .sRGB, renderingIntent: .relativeColorimetric)!
+        let background = NativeColors.current.background.usingColorSpace(.sRGB)!
+        let scale = CGFloat(pixels.pixelsWide) / content.bounds.width
+        check((Array(24..<72) + Array(356..<374)).allSatisfy { y in
+            (24..<376).allSatisfy { x in
+                let pixel = pixels.colorAt(x: Int(CGFloat(x) * scale), y: Int(CGFloat(y) * scale))!
+                return abs(pixel.redComponent - background.redComponent) < 0.02 &&
+                    abs(pixel.greenComponent - background.greenComponent) < 0.02 &&
+                    abs(pixel.blueComponent - background.blueComponent) < 0.02
+            }
+        }, "Startup leaves the header and footer blank, including the painted brand mark")
         connect()
         check(!busy && StartupProtocol.statusRequests == 0, "Sign-in cannot race saved-login initialization")
         poll(.waiting) {
@@ -92,8 +108,11 @@ class StartupCheckDelegate: AppDelegate {
                       "A disabled Copilot uses the same Paused text as Codex")
                 self.poll(.signedOut) {
                     check(self.currentView == "idle" && (self.controls["connect"] as? NSButton)?.title == "Not Connected" &&
-                          (self.controls["connect"] as? NSButton)?.isEnabled == true,
-                          "A genuinely signed-out account offers sign-in once ready")
+                          (self.controls["connect"] as? NSButton)?.isEnabled == true &&
+                          self.controls["connect"]?.isHidden == false &&
+                          (self.controls["connect"] as? NSButton)?.accessibilityLabel() == "Not Connected" &&
+                          (self.controls["connect"] as? NSButton)?.action == #selector(AppDelegate.addAccount),
+                          "A signed-out account offers its accessible connection action once ready")
                     self.checkFailures()
                 }
             }
@@ -121,7 +140,9 @@ class StartupCheckDelegate: AppDelegate {
         startupDeadline = Date.distantPast
         poll(.refused) {
             check(self.refreshError.contains("Kobashi2's local bridge") && self.notice.isEmpty &&
-                  (self.controls["connect"] as? NSButton)?.title == "Unavailable",
+                  self.controls["startingText"]?.isHidden == true &&
+                  self.controls.filter { !$0.value.isHidden }.map { $0.key } == ["notice"] &&
+                  (self.controls["notice"] as? NSTextField)?.stringValue == self.refreshError,
                   "An expired startup retry displays the actual local-bridge failure")
             self.poll(.connected) {
                 check(self.refreshError.isEmpty && self.notice.isEmpty && self.controls["notice"]?.isHidden == true,
@@ -159,7 +180,7 @@ class StartupCheckDelegate: AppDelegate {
             check(!self.refreshError.isEmpty && StartupProtocol.statusRequests == count + 1,
                   "Port conflicts, authentication failures, and invalid responses are not hidden by startup retries")
             check(self.window.contentView?.bounds.size == NSSize(width: 400, height: 390) &&
-                  self.controls["claude"]?.frame.minY == 184 && self.controls["project"]?.frame.minY == footerY,
+                  self.controls["codex"]?.frame.minY == 184 && self.controls["project"]?.frame.minY == footerY,
                   "Startup and error states preserve the fixed window and anchored footer")
             self.checkInvalidResponses(Array(modes.dropFirst()))
         }

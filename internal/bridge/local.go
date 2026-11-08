@@ -3,8 +3,10 @@ package bridge
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"os"
 	"os/exec"
@@ -21,12 +23,13 @@ type localModel struct {
 	Revision   string `json:"-"`
 	Bytes      int64  `json:"bytes"`
 	MinimumRAM int64  `json:"-"`
+	MaxContext int    `json:"-"`
 }
 
 var localModels = []localModel{
-	{"qwen3-4b", "Qwen3 4B", "mlx-community/Qwen3-4B-Instruct-2507-4bit", "50d427756c6b1b2fe0c0a10f67fbda1fc8e82c1b", 2500000000, 8 << 30},
-	{"qwen3-8b", "Qwen3 8B", "mlx-community/Qwen3-8B-4bit", "545dc4251c05440727734bcd94334791f6ab0192", 5000000000, 16 << 30},
-	{"qwen3-coder-30b", "Qwen3-Coder 30B", "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit", "6e302ea604ad9ab206367e2c501d1571023e7b6d", 18000000000, 32 << 30},
+	{"qwen3-4b", "Qwen3 4B", "mlx-community/Qwen3-4B-Instruct-2507-4bit", "50d427756c6b1b2fe0c0a10f67fbda1fc8e82c1b", 2500000000, 8 << 30, 262144},
+	{"qwen3-8b", "Qwen3 8B", "mlx-community/Qwen3-8B-4bit", "545dc4251c05440727734bcd94334791f6ab0192", 5000000000, 16 << 30, 40960},
+	{"qwen3-coder-30b", "Qwen3-Coder 30B", "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit", "6e302ea604ad9ab206367e2c501d1571023e7b6d", 18000000000, 32 << 30, 262144},
 }
 
 func findLocalModel(id string) (localModel, bool) {
@@ -40,8 +43,14 @@ func findLocalModel(id string) (localModel, bool) {
 func localModelFits(total, available int64, model localModel) bool {
 	return total >= model.MinimumRAM && available >= model.Bytes+(4<<30)
 }
+func localModelInstallReason(total int64, model localModel) string {
+	if total < model.MinimumRAM {
+		return fmt.Sprintf("Requires at least %d GB of memory", model.MinimumRAM>>30)
+	}
+	return ""
+}
 func recommendedLocalModel(total, available int64) string {
-	for _, id := range []string{"qwen3-coder-30b", "qwen3-4b"} {
+	for _, id := range []string{"qwen3-coder-30b", "qwen3-8b", "qwen3-4b"} {
 		model, _ := findLocalModel(id)
 		if localModelFits(total, available, model) {
 			return id
@@ -51,11 +60,15 @@ func recommendedLocalModel(total, available int64) string {
 }
 
 type localSetup struct {
-	Model string `json:"model"`
-	Stage string `json:"stage"`
-	Error string `json:"error,omitempty"`
-	Done  int64  `json:"downloaded"`
-	Total int64  `json:"total"`
+	Model          string `json:"model"`
+	Stage          string `json:"stage"`
+	Error          string `json:"error,omitempty"`
+	Done           int64  `json:"downloaded"`
+	Total          int64  `json:"total"`
+	CompletedSteps int    `json:"completedSteps"`
+	TotalSteps     int    `json:"totalSteps"`
+	Detail         string `json:"detail,omitempty"`
+	Packages       int    `json:"packages"`
 }
 type localManager struct {
 	app                            *App
@@ -67,11 +80,127 @@ type localManager struct {
 	runtimeCancel                  context.CancelFunc
 	runtimeDone                    chan struct{}
 	runtimeModel, endpoint, secret string
+	runtimeContext                 int
+	contexts                       map[string]int
 	client                         *http.Client
 }
 
 func newLocalManager(a *App) *localManager {
-	return &localManager{app: a, client: &http.Client{Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}}
+	return &localManager{app: a, contexts: map[string]int{}, client: &http.Client{Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}}
+}
+func localContextChoices(id string) []int {
+	model, ok := findLocalModel(id)
+	if !ok {
+		return nil
+	}
+	choices := []int{}
+	for _, value := range []int{8192, 16384, 32768, 65536, 131072, 262144} {
+		if value <= model.MaxContext {
+			choices = append(choices, value)
+		}
+	}
+	if !slices.Contains(choices, model.MaxContext) {
+		choices = append(choices, model.MaxContext)
+	}
+	return choices
+}
+func recommendedLocalContext(total int64, id string) int {
+	switch id {
+	case "qwen3-4b":
+		switch {
+		case total >= 64<<30:
+			return 262144
+		case total >= 32<<30:
+			return 131072
+		case total >= 24<<30:
+			return 65536
+		case total >= 16<<30:
+			return 32768
+		default:
+			return 8192
+		}
+	case "qwen3-8b":
+		if total >= 16<<30 {
+			return 40960
+		}
+		return 8192
+	case "qwen3-coder-30b":
+		switch {
+		case total >= 96<<30:
+			return 262144
+		case total >= 64<<30:
+			return 131072
+		case total >= 48<<30:
+			return 65536
+		default:
+			return 16384
+		}
+	}
+	return 0
+}
+func (l *localManager) loadContexts() error {
+	data, err := readOptional(l.app.path("local-context.json"))
+	if err != nil {
+		return err
+	}
+	if data == nil {
+		return nil
+	}
+	var saved map[string]int
+	if err := json.Unmarshal(data, &saved); err != nil {
+		return fmt.Errorf("Invalid local context settings: %w", err)
+	}
+	for id, value := range saved {
+		if !slices.Contains(localContextChoices(id), value) {
+			return fmt.Errorf("Invalid saved context window for %s", id)
+		}
+	}
+	l.mu.Lock()
+	if saved != nil {
+		l.contexts = saved
+	}
+	l.mu.Unlock()
+	return nil
+}
+func (l *localManager) setContext(id string, value int) (object, error) {
+	if !slices.Contains(localContextChoices(id), value) {
+		return nil, errors.New("Choose a supported context window for this local model")
+	}
+	l.mu.Lock()
+	next := maps.Clone(l.contexts)
+	next[id] = value
+	if err := writeJSON(l.app.path("local-context.json"), next); err != nil {
+		l.mu.Unlock()
+		return nil, err
+	}
+	if l.runtimeModel == id && l.endpoint != "" && l.runtimeContext > 0 && l.runtimeContext != value {
+		if err := l.updateRuntimeContext(l.app.ctx, l.endpoint, l.secret, id, value); err != nil {
+			restoreErr := l.updateRuntimeContext(l.app.ctx, l.endpoint, l.secret, id, l.runtimeContext)
+			saveErr := writeJSON(l.app.path("local-context.json"), l.contexts)
+			l.mu.Unlock()
+			err = fmt.Errorf("Could not apply local context: %w", err)
+			if restoreErr != nil {
+				err = errors.Join(err, fmt.Errorf("Restore previous runtime context: %w", restoreErr))
+			}
+			if saveErr != nil {
+				err = errors.Join(err, fmt.Errorf("Restore previous context settings: %w", saveErr))
+			}
+			return nil, err
+		}
+		l.runtimeContext = value
+	}
+	l.contexts = next
+	active := value
+	if l.runtimeModel == id && l.endpoint != "" && l.runtimeContext > 0 {
+		active = l.runtimeContext
+	}
+	l.mu.Unlock()
+	if l.app.snapshot().LocalModel == id {
+		if err := l.writeCatalog(id); err != nil {
+			return nil, fmt.Errorf("Context applied, but could not update the Codex model catalog: %w", err)
+		}
+	}
+	return object{"model": id, "contextWindow": value, "activeContextWindow": active, "contextPending": active != value}, nil
 }
 func (l *localManager) path(parts ...string) string {
 	return filepath.Join(append([]string{l.app.path("local")}, parts...)...)
@@ -80,6 +209,17 @@ func (l *localManager) status() localSetup { l.mu.Lock(); defer l.mu.Unlock(); r
 func (l *localManager) progress(stage string, done, total int64) {
 	l.mu.Lock()
 	l.setup.Stage, l.setup.Done, l.setup.Total = stage, done, total
+	if stage != "Installing" {
+		l.setup.CompletedSteps, l.setup.TotalSteps, l.setup.Packages = 0, 0, 0
+		l.setup.Detail = ""
+	}
+	l.mu.Unlock()
+}
+func (l *localManager) installProgress(completed int, detail string) {
+	l.mu.Lock()
+	l.setup.Stage, l.setup.Detail = "Installing", detail
+	l.setup.CompletedSteps, l.setup.TotalSteps = completed, 6
+	l.setup.Done, l.setup.Total, l.setup.Packages = 0, 0, 0
 	l.mu.Unlock()
 }
 func (l *localManager) hardware() (int64, int64, error) {
@@ -101,10 +241,17 @@ func (l *localManager) catalog() object {
 		reason := ""
 		if err != nil {
 			reason = err.Error()
-		} else if !localModelFits(total, available, m) {
-			reason = "Not enough available memory"
+		} else {
+			reason = localModelInstallReason(total, m)
 		}
-		entries = append(entries, object{"id": m.ID, "name": m.Name, "bytes": m.Bytes, "recommended": m.ID == recommendation, "available": reason == "", "reason": reason, "added": slices.Contains(saved, m.ID)})
+		warning := ""
+		if reason == "" && !localModelFits(total, available, m) {
+			warning = "Free memory before starting this model"
+		}
+		context, active := l.configuredContextSize(m.ID), l.contextSize(m.ID)
+		entries = append(entries, object{"id": m.ID, "name": m.Name, "bytes": m.Bytes, "recommended": m.ID == recommendation, "available": reason == "", "reason": reason, "warning": warning, "added": slices.Contains(saved, m.ID),
+			"contextWindow": context, "activeContextWindow": active, "contextChoices": localContextChoices(m.ID), "contextPending": context != active,
+			"recommendedContextWindow": recommendedLocalContext(total, m.ID)})
 	}
 	reason := ""
 	if err != nil {
@@ -117,12 +264,12 @@ func (l *localManager) add(id string) error {
 	if !ok {
 		return errors.New("Choose a local model")
 	}
-	total, available, err := l.hardware()
+	total, _, err := l.hardware()
 	if err != nil {
 		return err
 	}
-	if !localModelFits(total, available, model) {
-		return errors.New("Not enough available memory for this model")
+	if reason := localModelInstallReason(total, model); reason != "" {
+		return errors.New(reason)
 	}
 	l.mu.Lock()
 	if l.running {
@@ -197,6 +344,7 @@ func (l *localManager) stopRuntime() {
 	l.runtimeCancel = nil
 	l.runtimeDone = nil
 	l.runtimeModel = ""
+	l.runtimeContext = 0
 	l.endpoint = ""
 	l.secret = ""
 	l.mu.Unlock()
@@ -219,7 +367,9 @@ func (l *localManager) activate(ctx context.Context, id string) (result error) {
 	}
 	defer l.app.routes.Unlock()
 	previous := l.app.snapshot()
+	previousContext := l.contextSize(previous.LocalModel)
 	changed := false
+	runtimeAttempted := false
 	defer func() {
 		if result == nil {
 			return
@@ -233,9 +383,15 @@ func (l *localManager) activate(ctx context.Context, id string) (result error) {
 			l.app.accountGeneration++
 			l.app.mu.Unlock()
 			l.app.models.setAccount(previous.Token)
-			if previous.LocalModel != "" {
-				result = errors.Join(result, l.startRuntime(l.app.ctx, previous.LocalModel), l.writeCatalog(previous.LocalModel))
+		}
+		if runtimeAttempted && previous.LocalModel != "" {
+			if err := l.startRuntimeAtContext(l.app.ctx, previous.LocalModel, previousContext); err != nil {
+				result = errors.Join(result, fmt.Errorf("Restore previous local model: %w", err))
+			} else {
+				result = errors.Join(result, l.writeCatalog(previous.LocalModel))
 			}
+		}
+		if changed {
 			if previous.Codex && previous.active() {
 				result = errors.Join(result, l.app.injectCodex())
 			} else {
@@ -258,16 +414,11 @@ func (l *localManager) activate(ctx context.Context, id string) (result error) {
 			return fmt.Errorf("Wait for Copilot to become idle: %w", err)
 		}
 	}
+	runtimeAttempted = true
 	if err := l.startRuntime(ctx, id); err != nil {
-		if previous.LocalModel != "" {
-			_ = l.startRuntime(l.app.ctx, previous.LocalModel)
-		}
 		return err
 	}
 	if err := l.checkModel(ctx, id); err != nil {
-		if previous.LocalModel != "" && previous.LocalModel != id {
-			_ = l.startRuntime(l.app.ctx, previous.LocalModel)
-		}
 		return err
 	}
 	next := previous
@@ -372,35 +523,55 @@ func (l *localManager) restore(id string) error {
 	l.mu.Unlock()
 	return l.writeCatalog(id)
 }
-func (l *localManager) contextSize(id string) int {
-	total, _, _ := localHardware()
-	if id == "qwen3-coder-30b" && total < 48<<30 {
-		return 16384
+
+const localMaxOutputTokens = 4096
+
+func (l *localManager) configuredContextSize(id string) int {
+	l.mu.Lock()
+	configured := l.contexts[id]
+	l.mu.Unlock()
+	if configured != 0 {
+		return configured
 	}
-	return 32768
+	total, _, _ := localHardware()
+	return recommendedLocalContext(total, id)
+}
+func (l *localManager) contextSize(id string) int {
+	l.mu.Lock()
+	active := 0
+	if l.runtimeModel == id && l.endpoint != "" {
+		active = l.runtimeContext
+	}
+	l.mu.Unlock()
+	if active > 0 {
+		return active
+	}
+	return l.configuredContextSize(id)
 }
 func (l *localManager) models(id string) []object {
 	m, ok := findLocalModel(id)
 	if !ok {
 		return nil
 	}
-	return []object{{"id": id, "name": m.Name, "vendor": "Local", "model_picker_enabled": true, "supported_endpoints": []any{"/responses", "/chat/completions"}, "capabilities": object{"type": "chat", "limits": object{"max_context_window_tokens": l.contextSize(id), "max_prompt_tokens": l.contextSize(id), "max_output_tokens": 4096}, "supports": object{"streaming": true, "tool_calls": true}}}}
+	window := l.contextSize(id)
+	return []object{{"id": id, "name": m.Name, "vendor": "Local", "model_picker_enabled": true, "supported_endpoints": []any{"/responses", "/chat/completions"}, "capabilities": object{"type": "chat", "limits": object{"max_context_window_tokens": window, "max_prompt_tokens": window - localMaxOutputTokens, "max_output_tokens": localMaxOutputTokens}, "supports": object{"streaming": true, "tool_calls": true}}}}
 }
 func (l *localManager) writeCatalog(id string) error {
 	m := fallbackModel(id, localModelName(id), 0)
+	window := l.contextSize(id)
 	m["description"] = "Local · oMLX"
-	m["context_window"] = l.contextSize(id)
-	m["max_context_window"] = l.contextSize(id)
+	m["context_window"] = window
+	m["max_context_window"] = window
+	m["effective_context_window_percent"] = (window - localMaxOutputTokens) * 100 / window
 	m["input_modalities"] = []any{"text"}
 	m["supports_image_detail_original"] = false
 	m["supports_search_tool"] = false
 	m["support_verbosity"] = false
-	m["apply_patch_tool_type"] = "function"
 	m["default_reasoning_summary"] = "none"
 	m["use_responses_lite"] = false
 	return writeJSON(l.app.path("codex-model-catalog.json"), object{"models": []any{m}})
 }
-func (l *localManager) runtimeConfig(id string, port int, secret string) error {
+func (l *localManager) runtimeConfig(id string, port int, secret string, window int) error {
 	base := l.path("server", id)
 	total, _, _ := localHardware()
 	tier := "balanced"
@@ -429,7 +600,7 @@ func (l *localManager) runtimeConfig(id string, port int, secret string) error {
 		return err
 	}
 	return writeJSON(filepath.Join(base, "model_settings.json"), object{"version": 1, "models": object{id: object{
-		"is_default": true, "is_pinned": true, "enable_thinking": false, "max_context_window": l.contextSize(id), "max_tokens": 4096,
+		"is_default": true, "is_pinned": true, "enable_thinking": false, "max_context_window": window, "max_tokens": localMaxOutputTokens,
 		"turboquant_kv_enabled": true, "turboquant_kv_scheme": "turboquant", "turboquant_kv_bits": 4, "turboquant_skip_last": true,
 	}}})
 }

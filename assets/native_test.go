@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"image"
+	"image/color"
 	"image/png"
 	"testing"
 )
@@ -23,13 +24,14 @@ func checkConnectionIcon(t *testing.T, data []byte) {
 		return a
 	}
 	for _, point := range []image.Point{{128, 256}, {256, 256}, {384, 256}, {128, 208}, {384, 208}} {
-		if alpha(point.X, point.Y) != 0xffff {
+		pixel := color.NRGBAModel.Convert(icon.At(point.X*bounds.Dx()/512, point.Y*bounds.Dy()/512)).(color.NRGBA)
+		if pixel.A != 255 || pixel.R < 247 || pixel.G < 247 || pixel.B < 247 {
 			t.Fatal("connection icon must have solid circles and a connecting line", bounds, point)
 		}
 	}
-	for _, point := range []image.Point{{0, 0}, {256, 128}, {256, 384}, {256, 192}, {256, 320}} {
-		if alpha(point.X, point.Y) != 0 {
-			t.Fatal("connection icon must remain transparent outside its circles and line", bounds, point)
+	for _, point := range []image.Point{{0, 0}, {511, 0}, {0, 511}, {511, 511}} {
+		if alpha(point.X, point.Y) > 3*257 {
+			t.Fatal("connection icon must remain transparent outside its rounded background", bounds, point)
 		}
 	}
 }

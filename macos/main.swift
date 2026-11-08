@@ -15,13 +15,22 @@ struct NativeColors {
                 blue: CGFloat(value & 255) / 255, alpha: 1)
     }
 
+    static let brandPink = rgb(0xe94f76)
+    static let brandOrange = rgb(0xff9166)
+
+    static var gradient: NSGradient {
+        let high = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        return NSGradient(starting: high ? current.accent : brandPink,
+                          ending: high ? current.secondary : brandOrange)!
+    }
+
     static var current: NativeColors {
         let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let values: [UInt32] = dark
-            ? [0x100e17, 0xf0ebfa, 0xa69bb8, 0x1c1827, 0x342c46, 0x241e32, 0x302540, 0x15111e,
-               0xc4a5fd, 0xd8b4fe, 0xf85149, 0x756585, 0x7c3aed, 0x292234, 0x322447]
-            : [0xf7f4fc, 0x2b1b3d, 0x6f5f80, 0xfdfaff, 0xe2d8ef, 0xffffff, 0xeee7f8, 0xfaf7ff,
-               0x6d28d9, 0x7c3aed, 0xdc2626, 0x9e88b5, 0x6d28d9, 0xffffff, 0xede4fb]
+            ? [0x191014, 0xfff0f4, 0xbda2ac, 0x261a20, 0x49303a, 0x302129, 0x402934, 0x20151a,
+               0xe94f76, 0xff9166, 0xf85149, 0x8d7179, 0xc9355d, 0x33222a, 0x2c1520]
+            : [0xfff5f3, 0x3d202a, 0x80616c, 0xfffcfb, 0xf0d8dd, 0xffffff, 0xffe6e5, 0xfff9f7,
+               0xb52d52, 0xb94722, 0xdc2626, 0x9c7783, 0xb52d52, 0xffffff, 0xffe7ed]
         let c = values.map(rgb)
         let high = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
         return NativeColors(background: c[0], text: c[1], muted: high ? c[1] : c[2], panel: c[3],
@@ -64,7 +73,6 @@ func nativeText(_ text: String, in rect: NSRect, font: NSFont, color: NSColor,
 }
 
 func gradientText(_ text: String, in rect: NSRect, font: NSFont, centered: Bool = false, spacing: CGFloat = 0) {
-    let colors = NativeColors.current
     let mask = NSImage(size: rect.size, flipped: true) { box in
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = centered ? .center : .left
@@ -73,7 +81,7 @@ func gradientText(_ text: String, in rect: NSRect, font: NSFont, centered: Bool 
         return true
     }
     let image = NSImage(size: rect.size, flipped: true) { box in
-        NSGradient(starting: colors.accent, ending: colors.secondary)!.draw(in: box, angle: 0)
+        NativeColors.gradient.draw(in: box, angle: 0)
         mask.draw(in: box, from: .zero, operation: .destinationIn, fraction: 1)
         return true
     }
@@ -96,18 +104,8 @@ final class FlippedView: NSView {
         let c = NativeColors.current
         c.background.setFill()
         bounds.fill()
-        if owner?.hasHeaderNotice != true {
-            let mark = NSBezierPath()
-            mark.move(to: NSPoint(x: 38, y: 38))
-            mark.line(to: NSPoint(x: 50, y: 38))
-            mark.lineWidth = 3
-            mark.lineCapStyle = .round
-            c.accent.setStroke()
-            mark.stroke()
-            c.accent.setFill()
-            for x: CGFloat in [34, 46] {
-                NSBezierPath(ovalIn: NSRect(x: x, y: 34, width: 8, height: 8)).fill()
-            }
+        if owner?.currentView != "starting" && owner?.hasHeaderNotice != true {
+            owner?.drawArtwork("kobashi-icon", in: NSRect(x: 30, y: 24, width: 28, height: 28))
         }
         guard let owner else { return }
         switch owner.currentView {
@@ -123,12 +121,12 @@ final class FlippedView: NSView {
                 NSImage(systemSymbolName: "desktopcomputer", accessibilityDescription: "Local")?.draw(in: NSRect(x: 55, y: 92, width: 16, height: 16))
             } else { owner.drawArtwork("github", in: NSRect(x: 55, y: 92, width: 16, height: 16), tint: c.accent) }
             // }
-            if let (used, total) = owner.usageValues {
+            if owner.status["authMethod"] as? String != "local", let (used, total) = owner.usageValues {
                 rounded(NSRect(x: 50, y: 146, width: 299, height: 5), radius: 3, fill: c.track, border: c.track)
                 if used > 0 {
                     let track = NSBezierPath(roundedRect: NSRect(x: 50, y: 146, width: max(3, min(1, used / total) * 299), height: 5),
                                              xRadius: 3, yRadius: 3)
-                    NSGradient(starting: c.accent, ending: c.secondary)!.draw(in: track, angle: 0)
+                    NativeColors.gradient.draw(in: track, angle: 0)
                 }
             }
         case "device":
@@ -149,6 +147,11 @@ final class NativeCheckboxCell: NSButtonCell {
 }
 
 final class AppearanceSelector: NSPopUpButton {
+    override var acceptsFirstResponder: Bool { isEnabled }
+    override var canBecomeKeyView: Bool { isEnabled && !isHiddenOrHasHiddenAncestor }
+}
+
+final class ContextSlider: NSSlider {
     override var acceptsFirstResponder: Bool { isEnabled }
     override var canBecomeKeyView: Bool { isEnabled && !isHiddenOrHasHiddenAncestor }
 }
@@ -437,6 +440,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
     var localModels: [[String: Any]] = []
     var selectedLocalModel = ""
     var localSetupPending = false
+    var contextModels: [[String: Any]] = []
+    var contextLoading = false
+    var contextError = ""
+    var contextRevision = 0
+    var contextRestartModels: Set<String> = []
     var accountPopover: NSPopover?
     var pendingBridge: String?
     var refreshing = false
@@ -574,7 +582,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
     }
 
     @discardableResult func createWindow() -> Bool {
-        for name in ["github", "claude", "codex"] {
+        for name in ["kobashi-icon", "github", "claude", "codex"] {
             guard let url = Bundle.main.url(forResource: name, withExtension: "png"),
                   let image = NSImage(contentsOf: url) else {
                 showError("The app is missing its \(name) artwork.")
@@ -597,6 +605,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         title.font = .systemFont(ofSize: 20, weight: .bold)
         add(title, key: "title", group: "all", y: 25, height: 27, x: 62, width: 136)
         button("Settings", key: "settings", group: "all", y: 24, action: #selector(settingsView), x: 336, width: 32, height: 32)
+        label("Starting...", key: "startingText", group: "starting", y: 183, height: 24, x: 40, width: 320)
+        if let starting = controls["startingText"] as? NSTextField {
+            starting.alignment = .center
+            starting.isSelectable = false
+            starting.setAccessibilityElement(true)
+            starting.setAccessibilityRole(.staticText)
+            starting.setAccessibilityLabel("Starting...")
+        }
         button("Not Connected", key: "connect", group: "sign-in", y: 244, action: #selector(addAccount), x: 95, width: 210, height: 42)
         let hint = "Have an access token?"
         let link = "Paste it instead"
@@ -620,6 +636,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         progress.isIndeterminate = false
         progress.minValue = 0
         progress.maxValue = 1
+        progress.setAccessibilityLabel("Local setup progress")
         add(progress, key: "localProgress", group: "add-account", y: 274, height: 8, x: 40, width: 320)
         button("Add", key: "addLocal", group: "add-account", y: 298, action: #selector(addLocalModel), x: 240, width: 120, height: 34)
         label("Access token", key: "tokenLabel", group: "token", y: 197, height: 12, x: 60, width: 280, size: 11)
@@ -650,9 +667,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         label("AI credits this cycle", key: "usageLabel", group: "connected", y: 128, height: 16, x: 50, width: 170, size: 11)
         label("", key: "usageValue", group: "connected", y: 128, height: 16, x: 220, width: 129, size: 11)
         (controls["usageValue"] as? NSTextField)?.alignment = .right
-        checkbox("Claude", key: "claude", group: "connected", y: 184, height: 50, action: #selector(toggleClaude), x: 40, width: 320)
-        checkbox("Codex", key: "codex", group: "connected", y: 234, height: 50, action: #selector(toggleCodex), x: 40, width: 320)
-        checkbox("Copilot", key: "copilot", group: "connected", y: 284, height: 50, action: #selector(toggleCopilot), x: 40, width: 320)
+        let contextSlider = ContextSlider(value: 0, minValue: 0, maxValue: 1, target: self, action: #selector(saveLocalContext(_:)))
+        contextSlider.isContinuous = false
+        contextSlider.allowsTickMarkValuesOnly = true
+        contextSlider.setAccessibilityLabel("Context window")
+        add(contextSlider, key: "contextSlider", group: "connected", y: 137, height: 24, x: 50, width: 299)
+        checkbox("Codex", key: "codex", group: "connected", y: 184, height: 50, action: #selector(toggleCodex), x: 40, width: 320)
+        checkbox("Claude Code", key: "claude", group: "connected", y: 234, height: 50, action: #selector(toggleClaude), x: 40, width: 320)
+        checkbox("GitHub Copilot", key: "copilot", group: "connected", y: 284, height: 50, action: #selector(toggleCopilot), x: 40, width: 320)
         label("Settings", key: "settingsTitle", group: "settings", y: 70, height: 32, width: 260, size: 18)
         (controls["settingsTitle"] as? NSTextField)?.font = .systemFont(ofSize: 18, weight: .bold)
         checkbox("Start at login", key: "startup", group: "settings", y: 118, height: 30, action: #selector(saveStartup))
@@ -705,7 +727,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         render()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        window.makeFirstResponder(controls["connect"])
+        window.makeFirstResponder(currentView == "starting" ? nil : controls["connect"])
         return true
     }
 
@@ -818,6 +840,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
                 if self.bridgeReady, !self.addingAccount, self.currentView != "settings", value["connected"] as? Bool == true { self.currentView = "connected" }
                 // !["settings", "client", "server"].contains(self.currentView)
                 if self.bridgeReady, self.currentView == "connected", value["connected"] as? Bool != true { self.currentView = "idle" }
+                if self.bridgeReady, self.status["authMethod"] as? String == "local" { self.loadLocalContext() }
             }
             let statusError = error
             self.request("/api/settings") { [weak self] value, error in
@@ -848,7 +871,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         if let field = controls.values.first(where: {
             ($0 as? NSTextField)?.currentEditor() === window.firstResponder
         }) { actionFocus = field }
-        notice = pendingBridge == nil && !["/api/settings", "/api/appearance"].contains(path) ? "Working..." : ""
+        notice = pendingBridge == nil && !["/api/settings", "/api/appearance", "/api/local/context"].contains(path) ? "Working..." : ""
         render()
         request(path, body: body) { [weak self] value, error in
             guard let self else { return }
@@ -857,6 +880,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
             self.notice = error ?? ""
             if let value, error == nil {
                 switch path {
+                case "/api/local/context":
+                    if let id = value["model"] as? String,
+                       id == body["model"] as? String,
+                       let confirmed = value["contextWindow"] as? Int,
+                       confirmed == body["contextWindow"] as? Int,
+                       value["activeContextWindow"] as? Int == confirmed,
+                       value["contextPending"] as? Bool == false,
+                       let index = self.contextModels.firstIndex(where: { $0["id"] as? String == id }) {
+                        for key in ["contextWindow", "activeContextWindow", "contextPending"] {
+                            self.contextModels[index][key] = value[key]
+                        }
+                        self.contextRestartModels.insert(id)
+                    } else { self.notice = "The bridge did not confirm the context setting." }
                 case "/api/start":
                     if let code = value["user_code"] as? String, let device = value["device_code"] as? String {
                         self.deviceCode = device
@@ -1008,7 +1044,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
     func controlTextDidEndEditing(_ notification: Notification) { window.contentView?.needsDisplay = true }
 
     var hasHeaderNotice: Bool {
-        currentView == "connected" && (!notice.isEmpty || !refreshError.isEmpty || !(status["error"] as? String ?? "").isEmpty)
+        currentView == "connected" && (!notice.isEmpty || !refreshError.isEmpty ||
+            !(status["error"] as? String ?? "").isEmpty ||
+            (status["authMethod"] as? String == "local" && !contextError.isEmpty))
     }
 
     func render() {
@@ -1028,6 +1066,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         controls["connect"]?.frame.origin.y = currentView == "token" ? 154 : 160
         let noticeFrame: NSRect
         switch currentView {
+        case "starting": noticeFrame = NSRect(x: 40, y: 150, width: 320, height: 90)
         case "connected": noticeFrame = NSRect(x: 32, y: 24, width: 248, height: 32)
         case "add-account": noticeFrame = NSRect(x: 40, y: 298, width: 190, height: 50)
         case "settings": noticeFrame = NSRect(x: 32, y: 70, width: 336, height: 32)
@@ -1038,8 +1077,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         }
         controls["notice"]?.frame = noticeFrame
         for (group, views) in groups {
-            let visible = group == "all" || group == currentView ||
-                (group == "sign-in" && ["idle", "token"].contains(currentView))
+            let visible = (currentView != "starting" || group == "starting") &&
+                (group == "all" || group == currentView ||
+                (group == "sign-in" && ["idle", "token"].contains(currentView)))
                 // || (group == "network" && ["client", "server"].contains(currentView))
             for view in views {
                 view.isHidden = !visible
@@ -1053,15 +1093,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
                     : NSRect(x: 140, y: 112, width: 120, height: 28)
         (controls["accounts"] as? NSButton)?.isEnabled = !terminating && currentView != "starting"
         updateAccountControls()
-                controls["cancelAccount"]?.isHidden = !addingAccount || currentView == "settings"
+                controls["cancelAccount"]?.isHidden = !addingAccount || ["starting", "settings"].contains(currentView)
                 if let field = view as? NSTextField { field.textColor = colors.muted }
                 view.needsDisplay = true
             }
         }
         if let connect = controls["connect"] as? NSButton {
-            if currentView == "starting" { connect.isHidden = false }
-            connect.title = currentView == "starting"
-                ? (!notice.isEmpty || !refreshError.isEmpty ? "Unavailable" : "Starting...") : "Add account"
+            connect.title = "Not Connected"
             connect.setAccessibilityLabel(connect.title)
         }
         let token = controls["token"] as? NSSecureTextField
@@ -1100,13 +1138,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         (controls["settingsTitle"] as? NSTextField)?.textColor = colors.text
         (controls["appearanceLabel"] as? NSTextField)?.textColor = colors.text
         let localAccount = status["authMethod"] as? String == "local"
+        for key in ["usageLabel", "usageValue"] { controls[key]?.frame.origin.y = localAccount ? 120 : 128 }
         for key in ["usageLabel", "usageValue"] { controls[key]?.isHidden = currentView != "connected" || (!localAccount && usageValues == nil) }
         if localAccount {
-            setLabel("usageLabel", "Local · oMLX")
-            setLabel("usageValue", "TurboQuant 4-bit")
-            controls["usageValue"]?.toolTip = "TurboQuant 4-bit on supported layers; final attention layer stays at native precision."
-        } else { setLabel("usageLabel", "AI credits this cycle") }
-        if let (used, total) = usageValues {
+            setLabel("usageLabel", "Context window")
+        } else {
+            setLabel("usageLabel", "AI credits this cycle")
+            for key in ["usageLabel", "usageValue"] {
+                controls[key]?.toolTip = nil
+                (controls[key] as? NSTextField)?.setAccessibilityHelp(nil)
+            }
+        }
+        if !localAccount, let (used, total) = usageValues {
             let formatter = NumberFormatter()
             formatter.numberStyle = .decimal
             formatter.locale = Locale(identifier: "en_US")
@@ -1117,14 +1160,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         }
         var message = notice
         if message.isEmpty { message = refreshError }
+        if message.isEmpty, currentView == "connected", localAccount { message = contextError }
         if message.isEmpty { message = status["error"] as? String ?? "" }
         if message.isEmpty, currentView == "settings" { message = settings["error"] as? String ?? "" }
         // if message.isEmpty, currentView == "client" { message = "No GitHub sign-in needed. Disconnect the current source before connecting." }
         // if message.isEmpty, currentView == "server" { message = "Requires GitHub. Share only on a trusted LAN; use HTTPS for public access." }
         if message.isEmpty, currentView == "device" { message = "Waiting for authorization..." }
         setLabel("notice", message)
-        controls["notice"]?.isHidden = currentView == "connected" && message.isEmpty
-        controls["title"]?.isHidden = hasHeaderNotice
+        controls["notice"]?.isHidden = ["connected", "starting"].contains(currentView) && message.isEmpty
+        (controls["notice"] as? NSTextField)?.alignment = currentView == "starting" ? .center : .left
+        controls["startingText"]?.isHidden = currentView != "starting" || !message.isEmpty
+        controls["title"]?.isHidden = currentView == "starting" || hasHeaderNotice
         controls["settingsTitle"]?.isHidden = currentView != "settings" || !message.isEmpty
         if !message.isEmpty, message != "Working...",
            currentView != "device", !terminating, message != "Changes are saved automatically." {
@@ -1133,6 +1179,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         let version = status["version"] as? String ?? Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
         (controls["project"] as? NSButton)?.title = "v\(version)"
         renderLocalSetup()
+        renderLocalContext()
         let defaultKey = ["add-account": "addLocal", "idle": "connect", "token": "login", /* "client": "remoteConnect", "server": "serverToggle", */ "settings": "done"][currentView]
         window.defaultButtonCell = defaultKey.flatMap { (controls[$0] as? NSButton)?.cell as? NSButtonCell }
         window.contentView?.needsDisplay = true
@@ -1259,7 +1306,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
                         picker.addItem(withTitle: title)
                         picker.lastItem?.representedObject = model["id"]
                         picker.lastItem?.isEnabled = model["available"] as? Bool == true
-                        picker.lastItem?.toolTip = model["reason"] as? String
+                        let reason = model["reason"] as? String ?? ""
+                        picker.lastItem?.toolTip = reason.isEmpty ? model["warning"] as? String : reason
                     }
                     picker.selectItem(at: self.localModels.firstIndex { $0["id"] as? String == self.selectedLocalModel } ?? -1)
                 }
@@ -1293,15 +1341,37 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         if localSetupPending {
             let downloaded = (local["downloaded"] as? NSNumber)?.int64Value ?? 0
             let total = (local["total"] as? NSNumber)?.int64Value ?? 0
+            let completedSteps = (local["completedSteps"] as? NSNumber)?.intValue ?? 0
+            let totalSteps = (local["totalSteps"] as? NSNumber)?.intValue ?? 0
+            let packages = (local["packages"] as? NSNumber)?.intValue ?? 0
             text = stage
+            if stage == "Downloading" { text = "Downloading model" }
+            if stage == "Starting" { text = "Starting model" }
+            if stage == "Connecting" { text = "Connecting model" }
+            if stage == "Installing", let detail = local["detail"] as? String { text = detail }
+            if totalSteps > 0 {
+                let currentStep = min(totalSteps, max(1, completedSteps + 1))
+                text = "\(currentStep)/\(totalSteps)  \(text)"
+            }
             if total > 0 { text += " · " + ByteCountFormatter.string(fromByteCount: downloaded, countStyle: .file) + " / " + ByteCountFormatter.string(fromByteCount: total, countStyle: .file) }
+            else if downloaded > 0 { text += " · " + ByteCountFormatter.string(fromByteCount: downloaded, countStyle: .file) + " downloaded" }
+            else if packages > 0 { text += " · \(packages) downloaded" }
             if let progress = controls["localProgress"] as? NSProgressIndicator {
-                progress.isIndeterminate = total <= 0 && preparing
-                if progress.isIndeterminate { progress.startAnimation(nil) } else { progress.stopAnimation(nil); progress.doubleValue = total > 0 ? Double(downloaded) / Double(total) : 0 }
+                progress.isIndeterminate = total <= 0 && totalSteps <= 0 && preparing
+                if progress.isIndeterminate {
+                    progress.startAnimation(nil)
+                } else {
+                    progress.stopAnimation(nil)
+                    let bytes = total > 0 ? Double(downloaded) / Double(total) : 0
+                    let fraction = totalSteps > 0 ? (Double(completedSteps) + max(0, min(1, bytes))) / Double(totalSteps) : 0
+                    progress.doubleValue = max(0, min(1, totalSteps > 0 ? fraction : bytes))
+                }
+                progress.setAccessibilityHelp(text)
             }
             if stage == "Error" { setLabel("notice", local["error"] as? String ?? "Local setup failed"); (controls["notice"] as? NSTextField)?.textColor = NativeColors.current.danger }
         } else if let bytes = selected?["bytes"] as? NSNumber {
             text = ByteCountFormatter.string(fromByteCount: bytes.int64Value, countStyle: .file)
+            if let warning = selected?["warning"] as? String, !warning.isEmpty { text += " · " + warning }
         }
         setLabel("localProgressText", text)
         controls["localProgress"]?.isHidden = !preparing
@@ -1323,6 +1393,85 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         notice = ""
         render()
         window.makeFirstResponder(controls["startup"])
+    }
+    func loadLocalContext() {
+        let id = localContextModelID
+        guard !id.isEmpty, !contextLoading, !busy else { return }
+        contextLoading = true
+        let revision = contextRevision
+        request("/api/local/models") { [weak self] value, error in
+            guard let self else { return }
+            self.contextLoading = false
+            guard revision == self.contextRevision, id == self.localContextModelID else { return }
+            if let value, value["supported"] as? Bool == true {
+                self.contextModels = value["models"] as? [[String: Any]] ?? []
+                let model = self.contextModels.first { $0["id"] as? String == id }
+                let configured = model?["contextWindow"] as? Int ?? 0
+                self.contextError = self.contextChoices.contains(configured) ? "" : "No context settings are available for this model."
+            } else {
+                self.contextError = error ?? value?["error"] as? String ?? "Local context settings are unavailable."
+            }
+            self.render()
+        }
+    }
+    var localContextModelID: String { status["localModel"] as? String ?? "" }
+    var contextChoices: [Int] {
+        contextModels.first { $0["id"] as? String == localContextModelID }?["contextChoices"] as? [Int] ?? []
+    }
+    func contextTokenText(_ value: Int) -> String {
+        value.formatted(.number.locale(Locale(identifier: "en_US"))) + " tokens"
+    }
+    @objc func saveLocalContext(_ sender: NSSlider) {
+        guard currentView == "connected", status["authMethod"] as? String == "local",
+              !busy, contextChoices.indices.contains(sender.integerValue) else { return }
+        contextRevision += 1
+        action("/api/local/context", ["model": localContextModelID, "contextWindow": contextChoices[sender.integerValue]])
+    }
+    func renderLocalContext() {
+        guard let slider = controls["contextSlider"] as? NSSlider else { return }
+        slider.isHidden = currentView != "connected" || status["authMethod"] as? String != "local"
+        guard !slider.isHidden else {
+            if window.firstResponder === slider {
+                window.makeFirstResponder(currentView == "connected" ? controls["accounts"] : nil)
+            }
+            return
+        }
+        let choices = contextChoices
+        let model = contextModels.first { $0["id"] as? String == localContextModelID }
+        let configured = model?["contextWindow"] as? Int ?? 0
+        let index = choices.firstIndex(of: configured)
+        slider.isEnabled = !busy && index != nil
+        slider.trackFillColor = NativeColors.current.accent
+        guard let index else {
+            setLabel("usageValue", "")
+            return
+        }
+        slider.maxValue = Double(choices.count - 1)
+        slider.numberOfTickMarks = choices.count
+        if !busy { slider.integerValue = index }
+        let value = choices[slider.integerValue]
+        let text = contextTokenText(value)
+        setLabel("usageValue", text)
+        slider.setAccessibilityValueDescription(text)
+        let active = model?["activeContextWindow"] as? Int ?? configured
+        let pending = model?["contextPending"] as? Bool == true
+        let recommended = model?["recommendedContextWindow"] as? Int ?? 0
+        let applying = busy && actionFocus === slider
+        setLabel("usageLabel", applying ? "Working..." : contextRestartModels.contains(localContextModelID)
+                 ? "Restart Codex to apply" : value == recommended ? "Context · recommended" : "Context window")
+        let applies = pending
+            ? "Active: \(contextTokenText(active)). The runtime has not confirmed the new capacity."
+            : "Runtime capacity applies immediately. Restart Codex to reload its context budget."
+        let recommendation = choices.contains(recommended)
+            ? "Recommended for your RAM: \(contextTokenText(recommended)). This is a conservative starting point, not a memory guarantee.\n"
+            : ""
+        let help = "Use Left and Right Arrow to choose a token capacity.\n\(recommendation)Range: \(contextTokenText(choices[0])) to \(contextTokenText(choices[choices.count - 1])).\nMore tokens use more memory and may be slower.\nTurboQuant 4-bit KV compression stays enabled.\n\(applies)"
+        slider.toolTip = "\(text)\n\(help)"
+        slider.setAccessibilityHelp(help)
+        for key in ["usageLabel", "usageValue"] {
+            controls[key]?.toolTip = help
+            (controls[key] as? NSTextField)?.setAccessibilityHelp(help)
+        }
     }
     /*
     func fieldValue(_ key: String) -> String {

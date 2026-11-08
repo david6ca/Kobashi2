@@ -26,6 +26,20 @@ class ToggleCheckDelegate: AppDelegate {
         status = ["connected": true, "codexEnabled": true, "claudeEnabled": true, "copilotEnabled": true,
                   "copilotURL": "http://127.0.0.1:18925/v1"]
         render()
+        let clients = [("codex", "Codex", CGFloat(184)),
+                       ("claude", "Claude Code", CGFloat(234)),
+                       ("copilot", "GitHub Copilot", CGFloat(284))]
+        for (key, title, y) in clients {
+            let button = controls[key] as! NativeButton
+            check(button.title == title && button.accessibilityLabel() == title && button.frame.minY == y,
+                  "\(title) has the requested label, accessible name, and row position")
+            check((title as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 12)]).width <= 180,
+                  "\(title) fits its client label without truncation")
+        }
+        let clientKeys = groups["connected"]!.compactMap { ($0 as? NativeButton)?.key }
+            .filter { ["codex", "claude", "copilot"].contains($0) }
+        check(clientKeys == ["codex", "claude", "copilot"],
+              "Client controls are created in visual order for keyboard navigation")
         NSApp.activate(ignoringOtherApps: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.clickNext() }
     }
@@ -43,7 +57,7 @@ class ToggleCheckDelegate: AppDelegate {
         check(pendingBridge == key && busy && notice.isEmpty && controls["notice"]?.isHidden == true,
               "The \(key) toggle has no progress banner")
         check(window.contentView?.bounds.size == NSSize(width: 400, height: 390) &&
-              controls["claude"]?.frame.minY == 184 && controls["codex"]?.frame.minY == 234 &&
+              controls["codex"]?.frame.minY == 184 && controls["claude"]?.frame.minY == 234 &&
               controls["copilot"]?.frame.minY == 284,
               "The pending \(key) toggle does not move or resize the homepage")
         for other in ["codex", "claude", "copilot"] {

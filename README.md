@@ -48,7 +48,8 @@ step failed; persistent network failures still require a working connection or p
 
 ### Startup and window behavior
 
-The window shows **Starting...** until the local bridge has restored its saved
+The startup page shows only centered **Starting...** text, without buttons,
+branding, or a version footer, until the local bridge has restored its saved
 login and client configuration. It does not offer sign-in while that state is
 still loading. On macOS, initial connection refusals are retried for up to
 10 seconds while the bridge process starts; a stopped bridge, port conflict,
@@ -78,11 +79,42 @@ Click the Settings icon again or **Done** to return to the main screen.
 
 On Apple Silicon with macOS 15 or later, choose **Add account**, then select a
 local model and click **Add**. The recommended model is selected automatically
-using the Mac's available memory. **GitHub** opens the existing sign-in flow.
+using the Mac's available memory: Qwen3-Coder 30B, then Qwen3 8B, then Qwen3 4B.
+Models meeting the total-memory requirement remain selectable for download
+even when other apps currently use too much memory. A warning asks you to free
+memory before starting; runtime memory limits still apply.
+**GitHub** opens the existing sign-in flow.
 
-Kobashi2 installs its own oMLX runtime and Python environment, downloads the model,
+Kobashi2 checks existing installations before setup. A working oMLX runtime is
+reused after its version and required imports are verified, even if an earlier
+setup did not save its completion marker. Existing uv and compatible Python 3.12
+installations are reused; Python discovery runs offline before any download.
+Packages remain isolated in Kobashi2's own environment; system Python packages
+are not modified. Verified download caches and completed model downloads are
+also reused. Only missing setup components are installed.
+
+Kobashi2 prepares its oMLX runtime and Python environment, downloads the model,
 and prepares inference without asking for a Base URL, API key, or terminal command.
-Setup runs in the background with progress and cancellation; retry resumes model
+Setup runs in the background with progress and cancellation. Installation labels
+show the current action out of six stages, such as
+`5/6  Installing model tools`, with actual
+bytes for the installer/oMLX downloads and a count of downloaded packages while
+dependencies install. Labels distinguish checking existing tools, reusing them,
+downloading missing components, installing dependencies, and verifying setup.
+These dependencies let the local oMLX engine run models. The progress bar measures completed work, not
+the current stage number or elapsed time; dependency resolution and package
+installation can remain on one step until they finish. Model downloads show
+actual bytes. Runtime installation commands use the configured environment or system
+proxy, without changing other apps. Python package resolution uses only
+`https://packagefeedproxy.microsoft.io/pypi/simple/`, including isolated build
+dependencies; inherited package-index settings and public PyPI fallbacks are
+disabled. The pinned oMLX release and source overrides still come from GitHub.
+An installation-only loopback index adapts the Microsoft feed's HTML: it retains
+the original Microsoft wheel URLs and checksums, but removes metadata-sidecar
+advertisements that can return 404. Package metadata is read from the wheel
+instead; no alternative package source or relaxed TLS validation is used.
+Failed dependency downloads identify the
+host to check and retain details in `~/.kobashi/local/setup.log`. Retry resumes model
 downloads. The current account stays selected until the new model is ready.
 
 Local models appear alongside saved GitHub accounts and can power Claude, Codex,
@@ -90,6 +122,52 @@ and Copilot. The selected model uses 4-bit TurboQuant KV compression on supporte
 layers, with the final attention layer retained at native precision. Local
 inference never falls back to a cloud model. Existing client logins are preserved.
 Codex may need a full restart to reload its model picker after the first setup.
+Local Codex catalogs retain the supported `freeform` patch-tool type; `function`
+is not a valid `apply_patch_tool_type` and prevents the client from starting.
+For local Responses API requests, Kobashi2 translates Codex freeform tools into
+JSON functions with a string `input`, then restores custom tool calls and their
+streaming events. Tool history and results are translated for subsequent turns.
+Codex still executes `apply_patch` under its own sandbox and approval policy;
+the bridge never executes model-generated patches. Small models can still emit
+invalid tool arguments, which are reported as errors rather than executed.
+Context defaults use conservative, per-model recommendations based on total RAM
+and the current 4-bit KV configuration. Saved slider choices always take precedence.
+Client prompt budgets reserve 4,096 tokens for replies; system instructions, tool
+definitions, and chat templates also count toward the context limit.
+
+| Total RAM | Qwen3 4B | Qwen3 8B | Qwen3-Coder 30B |
+| --- | ---: | ---: | ---: |
+| 8–15 GB | 8,192 | Unavailable | Unavailable |
+| 16–23 GB | 32,768 | 40,960 | Unavailable |
+| 24–31 GB | 65,536 | 40,960 | Unavailable |
+| 32–47 GB | 131,072 | 40,960 | 16,384 |
+| 48–63 GB | 131,072 | 40,960 | 65,536 |
+| 64–95 GB | 262,144 | 40,960 | 131,072 |
+| 96+ GB | 262,144 | 40,960 | 262,144 |
+
+RAM tiers use binary gigabytes (GiB). These are starting points, not measured
+maximums or guarantees: model weights, prefill, other apps, and memory pressure
+also consume RAM. The heavier 30B model leaves less room for KV on smaller Macs.
+
+With a local model connected, adjust the context slider in the account card's
+token-usage area. Switching accounts selects that model's independent setting;
+GitHub accounts retain their normal credit-usage display.
+Each model's token capacity is saved separately in `~/.kobashi/local-context.json`,
+independently of accounts and downloaded models. The discrete choices range from
+8,192 to the model's native limit: 40,960 for Qwen3 8B, or 262,144 for Qwen3 4B
+and Qwen3-Coder 30B. Larger contexts use more memory and may be slower; the native
+limit is not a guarantee that your Mac can fit a full request. The slider's help
+shows the RAM-based recommendation; **Context · recommended** marks that value
+when selected. Recommendations do not overwrite existing manual choices.
+
+Releasing the slider saves and immediately applies the capacity to the running
+model through oMLX's authenticated settings API, without reselecting the account,
+restarting Kobashi2, reloading model weights, or interrupting current inference.
+The bridge verifies the effective runtime limit before publishing the new client
+budgets and Codex model catalog. **Restart Codex to apply** reminds you to restart
+Codex so it reloads its cached context budget, even when using the same model.
+Hover over the slider for memory/performance guidance. The slider changes
+token capacity, not KV quantization; TurboQuant 4-bit compression stays enabled.
 
 Runtime packages, models, and setup logs are stored under `~/.kobashi/local`.
 Removing a local account keeps its downloaded model. Local oMLX support is Mac-only;
@@ -131,7 +209,7 @@ Mouse selection adds no thick row border; keyboard focus remains visible around
 the relevant control. The app icon uses two solid circles joined by a line.
 The macOS menu bar uses the same connection mark as a template icon, so macOS
 controls its color for light, dark, and highlighted menu-bar states.
-Both themes use purple accents; active/connected indicators stay green, errors
+Both themes use Pomegram berry-pink and coral-orange accents; active/connected indicators stay green, errors
 stay red, and paused/disconnected indicators stay neutral gray.
 Windows scales the entire window,
 including its frame, with display DPI and keeps all controls visible without scrolling.
@@ -162,7 +240,7 @@ tray icon or register startup.
 - **Copilot Bridge** — independent OpenAI-compatible endpoint with persistent enablement, deferred provider registration, and automatic connection of eligible idle local sessions, preserving the app's GitHub login
 - Auto-injects configs (`~/.claude/settings.json`, `~/.codex/config.toml`) and restores them on disconnect without replacing Codex account login
 - Auto-detects system HTTP(S) proxy — routes only Bridge's upstream traffic through it, leaving other apps untouched
-- Consistent purple light/dark themes with system preference detection
+- Consistent Pomegram light/dark themes with system preference detection
 - Opt-in login startup and close to system tray enabled by default
 - Compact fixed-size window with a plain background
 - Native Win32 and Cocoa clients with no third-party runtime

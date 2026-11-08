@@ -22,10 +22,13 @@ func main() {
 	testMac := flag.Bool("test-mac", false, "Run isolated Cocoa lifecycle checks on macOS")
 	testArtwork := flag.Bool("test-mac-artwork", false, "Run offscreen Cocoa artwork checks without opening windows")
 	testAccounts := flag.Bool("test-mac-accounts", false, "Run isolated Cocoa account-switcher checks")
+	testContext := flag.Bool("test-mac-context", false, "Run isolated Cocoa local-context slider checks")
 	smoke := flag.Bool("smoke", false, "Run the interactive isolated Cocoa smoke check")
 	flag.Parse()
 	var err error
-	if *testAccounts {
+	if *testContext {
+		err = checkMacHarness("macos-context.swift")
+	} else if *testAccounts {
 		err = checkMacHarness("macos-accounts.swift")
 	} else if *testArtwork {
 		err = checkMacHarness("macos-artwork.swift")
@@ -267,7 +270,7 @@ func buildMac(workspace, output string, env []string, version string) error {
 	if err := os.MkdirAll(filepath.Join(app, "MacOS"), 0700); err != nil {
 		return err
 	}
-	for _, name := range []string{"github.png", "claude.png", "codex.png"} {
+	for _, name := range []string{"kobashi-icon.png", "github.png", "claude.png", "codex.png"} {
 		if err := copyFile(filepath.Join(workspace, "assets", name), filepath.Join(app, "Resources", name)); err != nil {
 			return err
 		}

@@ -74,9 +74,9 @@ check(("Kobashi2" as NSString).size(withAttributes: [.font: heading.font!]).widt
 check(subject.controls["startupHelp"] == nil && subject.controls["trayHelp"] == nil &&
       subject.controls["theme"] == nil,
       "Settings descriptions and the header theme toggle are removed")
-check((subject.controls["connect"] as? NSButton)?.title == "Starting..." &&
-      (subject.controls["connect"] as? NSButton)?.isEnabled == false,
-      "Startup waits for the local bridge instead of offering sign-in")
+check((subject.controls["startingText"] as? NSTextField)?.stringValue == "Starting..." &&
+      subject.controls.filter { !$0.value.isHidden }.map { $0.key } == ["startingText"],
+      "Startup waits with plain text instead of offering sign-in")
 subject.currentView = "idle"
 subject.render()
 check(subject.window.contentView?.bounds.size == NSSize(width: 400, height: 390),
@@ -168,7 +168,7 @@ check(subject.controls["subtitle"] == nil, "The route description is absent")
 check(NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil) != nil,
       "The standard Settings gear is available")
 for (key, title, action) in [
-    ("connect", "Not Connected", #selector(AppDelegate.connect)),
+    ("connect", "Not Connected", #selector(AppDelegate.addAccount)),
     ("login", "Not Connected", #selector(AppDelegate.login)),
     ("disconnect", "Connected", #selector(AppDelegate.disconnect))
 ] {
@@ -178,10 +178,10 @@ for (key, title, action) in [
           (subject.controls[key] as? NSButton)?.accessibilityRole() == .button,
           "The \(key) status retains its native accessible name and action")
 }
-check(subject.controls["claude"]?.frame == NSRect(x: 40, y: 184, width: 320, height: 50) &&
-      subject.controls["codex"]?.frame == NSRect(x: 40, y: 234, width: 320, height: 50) &&
+check(subject.controls["codex"]?.frame == NSRect(x: 40, y: 184, width: 320, height: 50) &&
+      subject.controls["claude"]?.frame == NSRect(x: 40, y: 234, width: 320, height: 50) &&
       subject.controls["copilot"]?.frame == NSRect(x: 40, y: 284, width: 320, height: 50),
-      "The three Bridge rows share one padded group in the same order")
+      "The client rows show Codex, Claude Code, GitHub Copilot in one padded group")
 check(subject.controls["startup"]?.frame == NSRect(x: 32, y: 118, width: 336, height: 30) &&
       subject.controls["tray"]?.frame == NSRect(x: 32, y: 166, width: 336, height: 30) &&
       subject.controls["appearance"]?.frame == NSRect(x: 188, y: 214, width: 172, height: 30),
@@ -247,7 +247,7 @@ subject.status = ["connected": true, "username": "example", "claudeEnabled": tru
                   "copilotEnabled": true, "copilotURL": "http://127.0.0.1:18925/v1", "version": "2.1.7"]
 subject.render()
 check((subject.controls["copilot"] as? NSButton)?.accessibilityRole() == .checkBox &&
-      (subject.controls["copilot"] as? NSButton)?.accessibilityLabel() == "Copilot" &&
+      (subject.controls["copilot"] as? NSButton)?.accessibilityLabel() == "GitHub Copilot" &&
       (subject.controls["copilot"] as? NSButton)?.state == .on,
       "Copilot Bridge exposes its native checkbox name and enabled state")
 check(subject.controls["copilotCopy"] == nil, "The Copilot setup copy action is absent")
@@ -259,8 +259,8 @@ for appearance in ["light", "dark"] {
     let colors = NativeColors.current
     for color in [colors.accent, colors.secondary, colors.on] {
         let rgb = color.usingColorSpace(.sRGB)!
-        check(rgb.blueComponent > rgb.redComponent && rgb.redComponent > rgb.greenComponent,
-              "The \(appearance) theme uses purple brand and control colors")
+        check(rgb.redComponent > rgb.blueComponent && rgb.redComponent > rgb.greenComponent,
+              "The \(appearance) theme uses Pomegram brand and control colors")
     }
     let green = colors.connected.usingColorSpace(.sRGB)!
     let gray = colors.disconnected.usingColorSpace(.sRGB)!
@@ -269,7 +269,7 @@ for appearance in ["light", "dark"] {
           red.redComponent > red.greenComponent && red.redComponent > red.blueComponent &&
           abs(gray.redComponent - gray.greenComponent) < 0.1 && abs(gray.greenComponent - gray.blueComponent) < 0.1,
           "The \(appearance) theme preserves green, red, and neutral gray functional colors")
-    for (key, title) in [("claude", "Claude"), ("codex", "Codex"), ("copilot", "Copilot")] {
+    for (key, title) in [("codex", "Codex"), ("claude", "Claude Code"), ("copilot", "GitHub Copilot")] {
         let button = subject.controls[key] as! NativeButton
         check(button.title == title && button.accessibilityLabel() == title,
               "The \(title) row and accessible name omit Bridge")
@@ -321,17 +321,17 @@ for appearance in ["light", "dark"] {
         subject.render()
         check(subject.window.contentView?.bounds.size == NSSize(width: 400, height: 390) &&
               subject.controls["account"]?.frame.minY == 92 &&
-              subject.controls["claude"]?.frame.minY == 184 &&
+              subject.controls["codex"]?.frame.minY == 184 &&
               subject.controls["project"]?.frame.minY == 356 &&
               subject.controls["notice"]?.isHidden == true,
               "The \(appearance) homepage keeps its compact fixed layout")
     }
-    let panelTop = subject.controls["claude"]!.frame.minY - 6
+    let panelTop = subject.controls["codex"]!.frame.minY - 6
     let panelBottom = subject.controls["copilot"]!.frame.maxY + 6
     check(72 - subject.controls["settings"]!.frame.maxY == 16 &&
           panelTop - 162 == 16 && subject.controls["project"]!.frame.minY - panelBottom == 16 &&
-          subject.controls["codex"]!.frame.minY == subject.controls["claude"]!.frame.maxY &&
-          subject.controls["copilot"]!.frame.minY == subject.controls["codex"]!.frame.maxY,
+          subject.controls["claude"]!.frame.minY == subject.controls["codex"]!.frame.maxY &&
+          subject.controls["copilot"]!.frame.minY == subject.controls["claude"]!.frame.maxY,
           "The header, account, client panel, and version have equal 16-point gaps")
     let content = subject.window.contentView!
     let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds)!
@@ -345,10 +345,10 @@ for appearance in ["light", "dark"] {
             abs(actual.greenComponent - expected.greenComponent) < 0.02 &&
             abs(actual.blueComponent - expected.blueComponent) < 0.02
     }
-    check([38, 44, 50].allSatisfy { matches($0, 38, colors.accent) } &&
-          [38, 50].allSatisfy { matches($0, 35, colors.accent) } &&
-          matches(44, 35, colors.background) && matches(48, 29, colors.background),
-          "The \(appearance) header renders two solid circles joined by a line, not a chevron")
+    check([38, 44, 50].allSatisfy { matches($0, 38, .white) } &&
+          [38, 50].allSatisfy { matches($0, 35, .white) } &&
+          !matches(48, 29, colors.background),
+          "The \(appearance) header renders white circles and connector on the Pomegram gradient")
     check((56..<72).allSatisfy { matches(200, $0, colors.background) } &&
           (162..<178).allSatisfy { matches(200, $0, colors.background) } &&
           (340..<356).allSatisfy { matches(200, $0, colors.background) },

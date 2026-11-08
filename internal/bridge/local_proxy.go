@@ -115,6 +115,14 @@ func (l *localManager) proxy(w http.ResponseWriter, r *http.Request, s session, 
 		fail(400, "Select "+s.Username+" for this conversation")
 		return
 	}
+	var custom localCustomTools
+	if !anthropic && strings.HasPrefix(r.URL.Path, "/v1/responses") {
+		custom, err = prepareLocalCustomTools(body)
+		if err != nil {
+			fail(400, err.Error())
+			return
+		}
+	}
 	l.mu.Lock()
 	endpoint, secret := l.endpoint, l.secret
 	l.mu.Unlock()
@@ -139,9 +147,19 @@ func (l *localManager) proxy(w http.ResponseWriter, r *http.Request, s session, 
 			p.Out.Body = io.NopCloser(bytes.NewReader(data))
 			p.Out.ContentLength = int64(len(data))
 		}, Transport: l.client.Transport, FlushInterval: -1,
-		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) {
+		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
+			if len(custom) > 0 {
+				l.app.report(err)
+				fail(502, "Local freeform tool response failed: "+err.Error())
+				return
+			}
 			fail(502, "Local inference failed. Select the model account to reconnect")
 		},
+	}
+	if len(custom) > 0 {
+		proxy.ModifyResponse = func(response *http.Response) error {
+			return l.restoreCustomResponse(r.Context(), response, custom)
+		}
 	}
 	proxy.ServeHTTP(w, r)
 }

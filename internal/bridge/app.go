@@ -130,6 +130,10 @@ func New(options Options) (*App, error) {
 	a := &App{options: options, ctx: ctx, cancel: cancel, client: options.Client, settings: Settings{CloseToTray: true}, appearance: "system", closed: make(chan struct{})}
 	a.models = newModelRegistry(a)
 	a.local = newLocalManager(a)
+	if err := a.local.loadContexts(); err != nil {
+		cancel()
+		return nil, err
+	}
 	/*
 		a.remoteClient = &http.Client{Transport: &http.Transport{
 			Proxy: nil, DialContext: (&net.Dialer{Timeout: 8 * time.Second, KeepAlive: 15 * time.Second}).DialContext,
@@ -666,6 +670,7 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 				"copilotEnabled": s.Copilot, "copilotURL": a.CopilotURL(),
 				"version": a.options.Version, "error": a.lastError, "lastEffort": a.lastEffort, "usage": a.usage, "appearance": a.appearance}
 			status["accounts"] = publicAccounts(s)
+			status["localModel"] = s.LocalModel
 			// status["remoteURL"] = s.RemoteURL
 			// status["server"] = object{"enabled": a.shared.Enabled, "running": a.sharedServer != nil, "listen": a.shared.Listen}
 			a.mu.RUnlock()
@@ -710,6 +715,21 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 	var result any = object{"ok": true}
 	var err error
 	switch r.URL.Path {
+	case "/api/local/context":
+		var body object
+		body, err = readObject(r.Body, 4096)
+		if err == nil {
+			raw, ok := body["contextWindow"].(json.Number)
+			var value int64
+			if ok {
+				value, err = raw.Int64()
+			}
+			if !ok || err != nil || value < 8192 || value > 262144 {
+				err = errors.New("Context window must be a supported whole number of tokens")
+			} else {
+				result, err = a.local.setContext(str(body["model"]), int(value))
+			}
+		}
 	case "/api/local/add":
 		var body object
 		body, err = readObject(r.Body, 4096)

@@ -17,6 +17,11 @@ import (
 	"github.com/david6ca/Kobashi2/assets"
 )
 
+const (
+	brandPink   uint32 = 0xe94f76
+	brandOrange uint32 = 0xff9166
+)
+
 type palette struct {
 	background, text, muted, panel, border, button, hover, input uint32
 	accent, secondary, danger, toggle, on, knob, tile, badge     uint32
@@ -37,16 +42,16 @@ func themePalette(dark, high bool) palette {
 		return palette{bg, fg, fg, bg, fg, face, face, bg, accent, accent, fg, bg, accent, system(14), face, bg, fg, fg}
 	}
 	if dark {
-		return palette{0x100e17, 0xf0ebfa, 0xa69bb8, 0x1c1827, 0x342c46, 0x241e32, 0x302540, 0x15111e,
-			0xc4a5fd, 0xd8b4fe, 0xf85149, 0x756585, 0x7c3aed, 0xffffff, 0x292234, 0x322447, 0x3fb950, 0x9ca3af}
+		return palette{0x191014, 0xfff0f4, 0xbda2ac, 0x261a20, 0x49303a, 0x302129, 0x402934, 0x20151a,
+			0xe94f76, 0xff9166, 0xf85149, 0x8d7179, 0xc9355d, 0xffffff, 0x33222a, 0x2c1520, 0x3fb950, 0x9ca3af}
 	}
-	return palette{0xf7f4fc, 0x2b1b3d, 0x6f5f80, 0xfdfaff, 0xe2d8ef, 0xffffff, 0xeee7f8, 0xfaf7ff,
-		0x6d28d9, 0x7c3aed, 0xdc2626, 0x9e88b5, 0x6d28d9, 0xffffff, 0xffffff, 0xede4fb, 0x15803d, 0x6b7280}
+	return palette{0xfff5f3, 0x3d202a, 0x80616c, 0xfffcfb, 0xf0d8dd, 0xffffff, 0xffe6e5, 0xfff9f7,
+		0xb52d52, 0xb94722, 0xdc2626, 0x9c7783, 0xb52d52, 0xffffff, 0xffffff, 0xffe7ed, 0x15803d, 0x6b7280}
 }
 
 func (w *Window) loadArtwork() error {
 	w.artwork = map[string]image.Image{}
-	for name, data := range map[string][]byte{"github": assets.GitHub, "claude": assets.Claude, "codex": assets.Codex} {
+	for name, data := range map[string][]byte{"kobashi": assets.Artwork, "github": assets.GitHub, "claude": assets.Claude, "codex": assets.Codex} {
 		im, err := png.Decode(bytes.NewReader(data))
 		if err != nil {
 			return fmt.Errorf("load %s artwork: %w", name, err)
@@ -138,6 +143,8 @@ func (w *Window) layout() {
 			c.x, c.w = 32, 336
 			c.y, c.h = 252, 70
 			switch w.view {
+			case "starting":
+				c.x, c.y, c.w, c.h = 40, 150, 320, 90
 			case "connected":
 				c.y, c.h, c.w = 24, 32, 248
 			case "settings":
@@ -220,6 +227,13 @@ func (p painter) text(value string, x, y, width, height int, font uintptr, rgb u
 	proc("DrawTextW", p.dc, uintptr(unsafe.Pointer(wide(value))), ^uintptr(0), uintptr(unsafe.Pointer(&r)), flags)
 }
 
+func (w *Window) gradientColors() (uint32, uint32) {
+	if w.highContrast {
+		return w.palette.accent, w.palette.secondary
+	}
+	return brandPink, brandOrange
+}
+
 func (p painter) gradient(x, y, width, height int) {
 	type vertex struct {
 		X, Y                    int32
@@ -228,7 +242,8 @@ func (p painter) gradient(x, y, width, height int) {
 	v := func(x, y int, rgb uint32) vertex {
 		return vertex{int32(p.s(x)), int32(p.s(y)), uint16(rgb>>16) << 8, uint16(rgb>>8) << 8, uint16(rgb) << 8, 0xff00}
 	}
-	vertices := [2]vertex{v(x, y, p.w.palette.accent), v(x+width, y+height, p.w.palette.secondary)}
+	start, end := p.w.gradientColors()
+	vertices := [2]vertex{v(x, y, start), v(x+width, y+height, end)}
 	mesh := [2]uint32{0, 1}
 	syscall.NewLazyDLL("msimg32.dll").NewProc("GradientFill").Call(p.dc, uintptr(unsafe.Pointer(&vertices[0])), 2, uintptr(unsafe.Pointer(&mesh[0])), 1, 0)
 }
@@ -271,6 +286,7 @@ func (p painter) gradientText(value string, x, y, width, height int, font uintpt
 	if font == p.w.codeFont {
 		bg = p.w.palette.input
 	}
+	startColor, endColor := p.w.gradientColors()
 	for row := 0; row < int(-header.Height); row++ {
 		for column := 0; column < int(header.Width); column++ {
 			index := (row*int(header.Width) + column) * 4
@@ -278,7 +294,7 @@ func (p painter) gradientText(value string, x, y, width, height int, font uintpt
 			t := float64(column) / float64(header.Width)
 			for channel := 0; channel < 3; channel++ {
 				shift := uint(channel * 8)
-				start, end := (p.w.palette.accent>>shift)&255, (p.w.palette.secondary>>shift)&255
+				start, end := (startColor>>shift)&255, (endColor>>shift)&255
 				rgb := uint32(float64(start)*(1-t) + float64(end)*t)
 				data[index+channel] = byte((rgb*alpha + ((bg>>shift)&255)*(255-alpha)) / 255)
 			}
@@ -402,6 +418,8 @@ func (w *Window) paintControl(c control, dc uintptr) {
 			fg = colors.muted
 		}
 		switch c.id {
+		case 13:
+			p.text(title, 0, 0, c.w, c.h, w.font, colors.muted, 0x25)
 		case idDisconnect, idAccounts:
 			if w.view == "connected" {
 				// Clip the common outline to each half of the split button.
@@ -428,9 +446,7 @@ func (w *Window) paintControl(c control, dc uintptr) {
 				p.text(title, 0, 0, c.w, c.h, w.small, colors.accent, 0x825)
 			}
 		case 1:
-			p.line(10, 14, 22, 14, 3, colors.accent)
-			p.round(6, 10, 8, 8, 4, colors.accent, colors.accent)
-			p.round(18, 10, 8, 8, 4, colors.accent, colors.accent)
+			p.artwork("kobashi", 2, 0, 28, bg, 0, false)
 			p.gradientText(title, 34, 1, c.w-34, 27, w.heading)
 		case 3, 4, 10, 11, 12, 21, 22, 24, 25:
 			rgb := colors.muted
@@ -441,6 +457,9 @@ func (w *Window) paintControl(c control, dc uintptr) {
 			flags := uintptr(0x810)
 			if c.id == 3 {
 				flags = 0x824
+			}
+			if c.id == 12 && w.view == "starting" {
+				flags = 0x811
 			}
 			if c.id == 4 {
 				font = w.tiny

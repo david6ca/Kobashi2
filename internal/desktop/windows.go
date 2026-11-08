@@ -232,6 +232,7 @@ func (w *Window) build() error {
 		style                   uintptr
 	}{
 		{"STATIC", "Kobashi2", "all", 1, 28, 24, 170, 28, 0},
+		{"STATIC", "Starting...", "starting", 13, 40, 183, 320, 24, 1},
 		{"BUTTON", "Se&ttings", "all", idSettings, 336, 24, 32, 32, 0x10000},
 		{"BUTTON", "Not &Connected", "sign-in", idConnect, 95, 160, 210, 42, 0x10000 | 1},
 		{"STATIC", "Have an access token?", "idle", 3, 99, 215, 119, 24, 0},
@@ -248,9 +249,9 @@ func (w *Window) build() error {
 		{"BUTTON", "Accounts", "all", idAccounts, 321, 87, 28, 28, 0x10000},
 		{"BUTTON", "Cancel", "all", idCancelAccount, 32, 60, 76, 28, 0x10000},
 		{"STATIC", "", "connected", 8, 50, 128, 299, 16, 0},
-		{"BUTTON", "C&laude", "connected", idClaude, 40, 184, 320, 44, 0x10000 | 3},
-		{"BUTTON", "&Codex", "connected", idCodex, 40, 228, 320, 44, 0x10000 | 3},
-		{"BUTTON", "Cop&ilot", "connected", idCopilot, 40, 272, 320, 44, 0x10000 | 3},
+		{"BUTTON", "&Codex", "connected", idCodex, 40, 184, 320, 44, 0x10000 | 3},
+		{"BUTTON", "C&laude Code", "connected", idClaude, 40, 228, 320, 44, 0x10000 | 3},
+		{"BUTTON", "GitHub Cop&ilot", "connected", idCopilot, 40, 272, 320, 44, 0x10000 | 3},
 		{"STATIC", "Settings", "settings", 9, 32, 70, 260, 32, 0},
 		{"BUTTON", "&Start at login", "settings", idStartup, 32, 114, 336, 30, 0x10000 | 3},
 		{"BUTTON", "&Close to system tray", "settings", idTray, 32, 162, 336, 30, 0x10000 | 3},
@@ -460,9 +461,6 @@ func (w *Window) render() {
 		if c.id == idCancelAccount {
 			show = w.addingAccount && w.view != "settings"
 		}
-		if c.id == idConnect && w.view == "starting" {
-			show = true
-		}
 		// || (c.view == "network" && (w.view == "client" || w.view == "server"))
 		if c.id == 8 {
 			_, _, show = w.usage()
@@ -476,6 +474,10 @@ func (w *Window) render() {
 		}
 		if c.id == 9 && (w.notice != "" || w.refreshError != "" || text(w.status["error"]) != "" || text(w.settings["error"]) != "") {
 			show = false
+		}
+		if w.view == "starting" {
+			hasError := w.notice != "" || w.refreshError != "" || text(w.status["error"]) != ""
+			show = (c.id == 13 && !hasError) || (c.id == 12 && hasError)
 		}
 		visible := uintptr(0)
 		if show {
@@ -499,14 +501,7 @@ func (w *Window) render() {
 		}
 	}
 	w.updateAccountControls()
-	connectTitle := "Not &Connected"
-	if w.view == "starting" {
-		connectTitle = "Starting..."
-		if w.notice != "" || w.refreshError != "" {
-			connectTitle = "Unavailable"
-		}
-	}
-	w.setText(idConnect, connectTitle)
+	w.setText(idConnect, "Not &Connected")
 	check := func(id int, value any) {
 		n := uintptr(0)
 		if value == true {

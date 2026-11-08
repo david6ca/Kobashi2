@@ -30,10 +30,11 @@ class AccountCheckDelegate: AppDelegate {
         switch path {
         case "/api/status": result = fixture
         case "/api/settings": result = ["closeToTray": true]
-        case "/api/local/models": result = ["supported": true, "recommended": "qwen3-4b", "models": [
-            ["id": "qwen3-4b", "name": "Qwen3 4B", "bytes": 2500000000, "recommended": true, "available": true],
-            ["id": "qwen3-8b", "name": "Qwen3 8B", "bytes": 5000000000, "available": true],
-            ["id": "qwen3-coder-30b", "name": "Qwen3-Coder 30B", "available": false, "reason": "Not enough available memory"]
+        case "/api/local/models": result = ["supported": true, "recommended": "qwen3-8b", "models": [
+            ["id": "qwen3-4b", "name": "Qwen3 4B", "bytes": 2500000000, "available": true],
+            ["id": "qwen3-8b", "name": "Qwen3 8B", "bytes": 5000000000, "recommended": true, "available": true],
+            ["id": "qwen3-coder-30b", "name": "Qwen3-Coder 30B", "bytes": 18000000000,
+             "available": true, "warning": "Free memory before starting this model"]
         ]]
         case "/api/local/add": fixture["local"] = ["model": body?["model"] ?? "", "stage": "Downloading", "downloaded": 500000000, "total": 2500000000]
         case "/api/local/cancel": fixture["local"] = ["stage": "Paused"]
@@ -86,7 +87,7 @@ class AccountCheckDelegate: AppDelegate {
         check(main.frame.maxX == arrow.frame.minX && arrow.frame.width == 28 &&
               arrow.frame.maxX == 349, "Connected has adjacent primary and dropdown hit targets")
         check(window.contentView?.bounds.size == windowSize &&
-              controls["claude"]?.frame.minY == 184 && controls["project"]?.frame.minY == footerY,
+              controls["codex"]?.frame.minY == 184 && controls["project"]?.frame.minY == footerY,
               "The split button keeps the cards and footer fixed")
         let location = arrow.convert(NSPoint(x: 14, y: 14), to: nil)
         check(window.contentView?.hitTest(location) === arrow, "The arrow receives its own mouse clicks")
@@ -162,10 +163,17 @@ class AccountCheckDelegate: AppDelegate {
                               self.status["connected"] as? Bool == true && self.controls["cancelAccount"]?.isHidden == false,
                               "Add account keeps the live connection and survives status polling")
                         let picker = self.controls["localModel"] as! NSPopUpButton
-                        check(self.selectedLocalModel == "qwen3-4b" && picker.selectedItem?.title.contains("Recommended") == true,
+                        check(self.selectedLocalModel == "qwen3-8b" && picker.selectedItem?.title == "Qwen3 8B · Recommended" &&
+                              !picker.itemArray[0].title.contains("Recommended"),
                               "Add account selects the recommended local model automatically")
-                        check(picker.itemArray.count == 3 && !picker.itemArray[2].isEnabled && self.controls["addGitHub"]?.isHidden == false,
-                              "GitHub and local models share the add flow; models that do not fit are disabled")
+                        check(picker.itemArray.count == 3 && picker.itemArray[2].isEnabled && self.controls["addGitHub"]?.isHidden == false,
+                              "A compatible coding model stays selectable under temporary memory pressure")
+                        picker.selectItem(at: 2)
+                        self.selectLocalModel(picker)
+                        check((self.controls["addLocal"] as! NSButton).isEnabled &&
+                              (self.controls["localProgressText"] as! NSTextField).stringValue.contains("Free memory") &&
+                              picker.itemArray[2].toolTip?.contains("Free memory") == true,
+                              "Selecting the coding model shows the startup-memory warning without blocking download")
                         picker.selectItem(at: 1)
                         self.selectLocalModel(picker)
                         self.addLocalModel()
@@ -176,6 +184,42 @@ class AccountCheckDelegate: AppDelegate {
                                   "Local download preserves the current connection")
                             check(!(self.controls["addLocal"] as! NSButton).isEnabled && self.controls["localProgress"]?.isHidden == false,
                                   "Setup displays progress and prevents duplicate installation")
+                            let progress = self.controls["localProgress"] as! NSProgressIndicator
+                            self.status["local"] = ["stage": "Installing", "detail": "Checking installer",
+                                                    "completedSteps": 0, "totalSteps": 6]
+                            self.render()
+                            check(progress.doubleValue == 0 &&
+                                  (self.controls["localProgressText"] as! NSTextField).stringValue == "1/6  Checking installer",
+                                  "Installation starts at stage one without claiming completed work")
+                            self.status["local"] = ["stage": "Installing", "detail": "Downloading model engine", "completedSteps": 3,
+                                                    "totalSteps": 6, "downloaded": 50, "total": 100]
+                            self.render()
+                            check(!progress.isIndeterminate && abs(progress.doubleValue - 3.5 / 6) < 0.001 &&
+                                  (self.controls["localProgressText"] as! NSTextField).stringValue.hasPrefix("4/6  Downloading model engine"),
+                                  "Installing combines completed steps with measured download bytes")
+                            check(progress.accessibilityLabel() == "Local setup progress" &&
+                                  progress.accessibilityHelp()?.hasPrefix("4/6  Downloading model engine") == true,
+                                  "The native progress indicator exposes its name and measured status")
+                            self.status["local"] = ["stage": "Installing", "detail": "Installing model tools",
+                                                    "completedSteps": 4, "totalSteps": 6, "packages": 2]
+                            self.render()
+                            check(!progress.isIndeterminate && abs(progress.doubleValue - 4.0 / 6) < 0.001 &&
+                                  (self.controls["localProgressText"] as! NSTextField).stringValue == "5/6  Installing model tools · 2 downloaded",
+                                  "Package installation reports actual completed steps and downloads without estimated timing")
+                            let progressText = self.controls["localProgressText"] as! NSTextField
+                            let textSize = (progressText.stringValue as NSString).size(withAttributes: [.font: progressText.font!])
+                            check(textSize.width <= progressText.bounds.width,
+                                  "The action and package count fit without truncating the progress label")
+                            self.status["local"] = ["stage": "Installing", "detail": "Model tools ready",
+                                                    "completedSteps": 6, "totalSteps": 6]
+                            self.render()
+                            check(progress.doubleValue == 1 &&
+                                  (self.controls["localProgressText"] as! NSTextField).stringValue == "6/6  Model tools ready",
+                                  "Completed installation never displays a nonexistent seventh stage")
+                            self.status["local"] = ["stage": "Downloading", "downloaded": 50, "total": 100]
+                            self.render()
+                            check(progress.doubleValue == 0.5 && progressText.stringValue.hasPrefix("Downloading model ·"),
+                                  "Model download names its action without retaining installation stage numbers")
                             self.cancelAddAccount()
                             self.later { self.checkCancelAndContinue() }
                         }
