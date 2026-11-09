@@ -80,6 +80,7 @@ type App struct {
 	lastEffort                    object
 	appearance                    string
 	models                        *modelRegistry
+	pngPayloads                   pngPayloadOptimizer
 	client                        *http.Client
 	ctx                           context.Context
 	cancel                        context.CancelFunc
@@ -566,6 +567,14 @@ func (a *App) invalidateToken(token string) {
 	}
 }
 func (a *App) validateToken(ctx context.Context, token, method string) (object, error) {
+	return a.connectToken(ctx, token, method, false)
+}
+
+func (a *App) addToken(ctx context.Context, token, method string) (object, error) {
+	return a.connectToken(ctx, token, method, true)
+}
+
+func (a *App) connectToken(ctx context.Context, token, method string, saveWhileBusy bool) (object, error) {
 	bounded, cancel := context.WithTimeout(ctx, 40*time.Second)
 	defer cancel()
 	status, who, err := a.github(bounded, "/user", token)
@@ -588,11 +597,14 @@ func (a *App) validateToken(ctx context.Context, token, method string) (object, 
 	if status != 200 || str(value["token"]) == "" {
 		return object{"ok": false, "reason": "github_error"}, fmt.Errorf("Copilot returned %d", status)
 	}
-	a.local.cancelSetup()
 	if !a.routes.TryLock() {
+		if saveWhileBusy {
+			return a.saveVerifiedAccount(token, str(who["login"]), method, value)
+		}
 		return nil, errors.New("A request is running. Try again when it finishes")
 	}
 	defer a.routes.Unlock()
+	a.local.cancelSetup()
 	previous := a.snapshot()
 	if previous.LocalModel != "" && previous.Copilot {
 		if err = a.restoreCopilot(); err != nil {
@@ -609,19 +621,7 @@ func (a *App) validateToken(ctx context.Context, token, method string) (object, 
 	if err = writeJSON(a.path("session.json"), next); err != nil {
 		return nil, err
 	}
-	a.models.pause()
-	a.mu.Lock()
-	a.state = next
-	a.bearer = str(value["token"])
-	a.expiry = number(value["expires_at"])
-	a.rawModels = nil
-	a.rawAt = time.Time{}
-	a.usage = nil
-	a.usageAt = time.Time{}
-	a.lastEffort = nil
-	a.accountGeneration++
-	a.mu.Unlock()
-	a.models.setAccount(token)
+	a.setGitHubSession(next, value)
 	if !previous.active() || previous.LocalModel != "" {
 		if err = a.injectCodex(); err != nil {
 			return nil, err
@@ -808,7 +808,7 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 			if token == "" {
 				result = object{"ok": false, "reason": "invalid_token"}
 			} else {
-				result, err = a.validateToken(r.Context(), token, "token")
+				result, err = a.addToken(r.Context(), token, "token")
 			}
 		}
 	case "/api/start":
@@ -927,7 +927,7 @@ func (a *App) pollLogin(ctx context.Context, code string) (object, error) {
 		}
 		a.pendingLogin = deviceLogin{code: code, token: token, expires: time.Now().Add(15 * time.Minute)}
 	}
-	result, err := a.validateToken(ctx, a.pendingLogin.token, "device")
+	result, err := a.addToken(ctx, a.pendingLogin.token, "device")
 	if err == nil {
 		a.pendingLogin = deviceLogin{}
 	}

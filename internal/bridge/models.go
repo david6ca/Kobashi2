@@ -592,7 +592,7 @@ func (a *App) copilotWithRetry(ctx context.Context, method, path string, body []
 		if err != nil {
 			return nil, err
 		}
-		if response.StatusCode != 401 && response.StatusCode != 400 {
+		if response.StatusCode != 401 && response.StatusCode != 400 && response.StatusCode != 403 {
 			return response, nil
 		}
 		data, err := readResponse(response, 16<<20)

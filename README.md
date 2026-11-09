@@ -182,6 +182,9 @@ appears below a divider and opens GitHub sign-in or access-token entry without
 disconnecting the current account. Cancel leaves that connection unchanged.
 Signing in again to the same username updates its saved credential, not the list
 count. Switching accounts preserves the Claude, Codex, and Copilot toggles.
+Signing in while inference is running saves the verified GitHub account without
+switching the current provider or interrupting its requests. Select the saved
+account once inference is idle. Signing in while idle selects it immediately.
 Opening the saved-account list is local and remains available while a bridge
 operation is running. Switching, removing, and adding accounts wait until that
 operation finishes; the open list then becomes actionable without reopening it.
@@ -531,6 +534,24 @@ requests record their terminal event or an early EOF without a terminal event.
 An HTTP 200 or ordinary EOF alone is not logged as a completed Responses stream.
 Logging does not replay interrupted inference requests or change client retry behavior.
 
+Responses requests sent to GitHub Copilot losslessly recompress large inline PNG
+images before forwarding. Dimensions, pixel data, transparency and all other PNG
+chunks (including color information) are preserved. Text, tool arguments, image
+IDs, external URLs and other image formats are unchanged. Images are replaced
+only when the encoding gets smaller; invalid or unsupported data is forwarded
+unchanged. Results are cached in memory with a 64 MiB / 32-entry limit, and logs
+record image counts and byte savings without image contents.
+
+The Codex bridge rejects non-POST requests to `/v1/responses` and
+`/v1/responses/compact` locally with HTTP 405 and `Allow: POST`; WebSocket
+upgrades are not supported. Upstream HTTP 413 size rejections are returned to
+Codex as HTTP 400 so it stops retrying the same oversized request. The original
+status remains in `X-Kobashi-Upstream-Status: 413` and diagnostic logs, and
+upstream request IDs and error details are preserved. Recognized JSON errors
+include guidance to reduce attachments or shorten the conversation. Copilot
+keeps HTTP 413. Size diagnostics record incoming and forwarded byte counts,
+never request contents. This does not truncate conversations or attachments.
+
 Upstream response headers have a two-minute timeout. After headers arrive,
 five minutes without response bytes ends the request; active streams have no
 total-duration limit. Responses terminal events end forwarding immediately.
@@ -603,6 +624,11 @@ Windows native stream/catalog checks use `KOBASHI_TEST_CODEX_EXE` and
 Live delegation checks also require `KOBASHI_TEST_COPILOT_SESSION` (the existing
 session file) and `KOBASHI_TEST_COPILOT_MODEL`. They consume Copilot usage and use
 a temporary home; the Codex installation must include `codex-code-mode-host.exe`.
+
+`TestInstalledCodexRequestTooLarge` uses the same executable setting with a
+simulated upstream to verify that a size rejection ends the turn after one
+request and retains the upstream error. It also runs on macOS, where only the
+disposable executable copy is re-signed for standalone execution.
 
 The bridge checks include the compatibility fixtures in
 `internal/bridge/testdata/parity.json`. On macOS with Xcode Command Line

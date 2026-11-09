@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -21,18 +22,22 @@ import (
 )
 
 func TestInstalledCodexStreamingFailureDetails(t *testing.T) {
-	checkInstalledCodexStream(t, false, false)
+	checkInstalledCodexStream(t, false, false, false)
 }
 
 func TestInstalledCodexInterruptedStream(t *testing.T) {
-	checkInstalledCodexStream(t, false, true)
+	checkInstalledCodexStream(t, false, true, false)
 }
 
 func TestInstalledCodexCopilotDelegation(t *testing.T) {
-	checkInstalledCodexStream(t, true, false)
+	checkInstalledCodexStream(t, true, false, false)
 }
 
-func checkInstalledCodexStream(t *testing.T, live, interrupted bool) {
+func TestInstalledCodexRequestTooLarge(t *testing.T) {
+	checkInstalledCodexStream(t, false, false, true)
+}
+
+func checkInstalledCodexStream(t *testing.T, live, interrupted, tooLarge bool) {
 	t.Helper()
 	source := os.Getenv("KOBASHI_TEST_CODEX_EXE")
 	if source == "" {
@@ -79,9 +84,19 @@ func checkInstalledCodexStream(t *testing.T, live, interrupted bool) {
 			t.Fatal(err)
 		}
 	}
+	if runtime.GOOS == "darwin" {
+		// The installed executable's signature references its app's Info.plist.
+		// Re-sign only the disposable standalone copy so macOS can launch it.
+		if output, err := exec.Command("codesign", "--force", "--sign", "-", path).CombinedOutput(); err != nil {
+			t.Fatalf("sign isolated Codex: %v: %s", err, output)
+		}
+	}
 	message := "Encrypted function output content could not be decrypted or decoded."
 	if interrupted {
 		message = "The upstream connection closed before the response finished."
+	}
+	if tooLarge {
+		message = "Request too large for GitHub Copilot."
 	}
 	const answer = "KOBASHI_V1_DELEGATION_OK_61b2"
 	var v1Tools atomic.Bool
@@ -160,6 +175,9 @@ func checkInstalledCodexStream(t *testing.T, live, interrupted bool) {
 			}
 			response.Body = io.NopCloser(bytes.NewReader(data))
 			return response, nil
+		}
+		if tooLarge {
+			return response(http.StatusRequestEntityTooLarge, object{"error": "failed to parse request"}), nil
 		}
 		result := response(200, nil)
 		result.Header.Set("Content-Type", "text/event-stream")
@@ -362,6 +380,14 @@ func checkInstalledCodexStream(t *testing.T, live, interrupted bool) {
 			finalAnswer = str(nested(event, "params", "item", "text"))
 		}
 		if event["method"] == "turn/completed" && nested(event, "params", "threadId") == threadID {
+			if tooLarge {
+				if requests.Load() != 1 {
+					t.Fatalf("native Codex retried the oversized request %d times", requests.Load()-1)
+				}
+				if !strings.Contains(str(nested(event, "params", "turn", "error", "message")), "failed to parse request") {
+					t.Fatal("native Codex lost the original size error", nested(event, "params", "turn", "error"))
+				}
+			}
 			if live {
 				if nested(event, "params", "turn", "status") != "completed" || strings.TrimSpace(finalAnswer) != answer ||
 					!spawned.Load() || !childAnswered.Load() {

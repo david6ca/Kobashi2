@@ -190,6 +190,12 @@ func authFailure(status int, body []byte) bool {
 	if status == 401 {
 		return true
 	}
+	if status == 403 {
+		// A bare Copilot "forbidden" has recovered after reacquiring a token
+		// even before its advertised expiry. Try fresh credentials once;
+		// structured permission, model-access and quota errors stay terminal.
+		return strings.EqualFold(strings.TrimSpace(string(body)), "forbidden")
+	}
 	if status != 400 {
 		return false
 	}

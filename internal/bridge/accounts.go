@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 )
 
 type account struct {
@@ -43,6 +44,50 @@ func publicAccounts(s session) []object {
 		}
 	}
 	return result
+}
+
+// Account actions are serialized by actions. Saving a verified account does not
+// require idle inference routes; changing the selected identity still does.
+func (a *App) saveVerifiedAccount(token, username, method string, value object) (object, error) {
+	previous := a.snapshot()
+	if !previous.active() {
+		return nil, errors.New("A request is running. Try again when it finishes")
+	}
+	next := previous
+	next.Accounts = upsertAccount(savedAccounts(previous), account{Token: token, Username: username, Method: method})
+	sameAccount := previous.LocalModel == "" && strings.EqualFold(previous.Username, username)
+	if sameAccount {
+		// Reauthorization refreshes credentials for the same identity. Requests
+		// already sent keep their own headers; retries may use the new token.
+		next.Token, next.Username, next.Method = token, username, method
+	}
+	if err := writeJSON(a.path("session.json"), next); err != nil {
+		return nil, err
+	}
+	if sameAccount {
+		a.setGitHubSession(next, value)
+	} else {
+		a.mu.Lock()
+		a.state.Accounts = next.Accounts
+		a.mu.Unlock()
+	}
+	return object{"ok": true, "username": username}, nil
+}
+
+func (a *App) setGitHubSession(next session, value object) {
+	a.models.pause()
+	a.mu.Lock()
+	a.state = next
+	a.bearer = str(value["token"])
+	a.expiry = number(value["expires_at"])
+	a.rawModels = nil
+	a.rawAt = time.Time{}
+	a.usage = nil
+	a.usageAt = time.Time{}
+	a.lastEffort = nil
+	a.accountGeneration++
+	a.mu.Unlock()
+	a.models.setAccount(next.Token)
 }
 
 func (a *App) switchAccount(ctx context.Context, username string) (object, error) {

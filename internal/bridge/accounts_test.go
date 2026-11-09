@@ -1,8 +1,10 @@
 package bridge
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +12,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func accountTestTransport(r *http.Request) (*http.Response, error) {
@@ -87,6 +90,151 @@ func TestAccountsAddSwitchAndReload(t *testing.T) {
 	result = controlCall(a, "/api/token-login", object{"token": "FIRST-secret"})
 	if result.Code != 200 || len(a.snapshot().Accounts) != 2 || a.snapshot().Accounts[0].Token != "FIRST-secret" {
 		t.Fatal("reauthentication duplicated an account", result.Body.String())
+	}
+}
+
+func TestAccountsAddDuringInferencePreservesRunningAccount(t *testing.T) {
+	entered, finished := make(chan struct{}), make(chan struct{})
+	reader, writer := io.Pipe()
+	a := testApp(t, func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host == "api.githubcopilot.com" {
+			if r.Header.Get("Authorization") != "Bearer existing-bearer" {
+				t.Error("running inference used a different account")
+			}
+			close(entered)
+			return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: reader}, nil
+		}
+		return accountTestTransport(r)
+	})
+	a.state = session{Token: "first-secret", Username: "first", Method: "token", Codex: true}
+	a.bearer, a.expiry = "existing-bearer", 9999999999
+	a.usage, a.lastEffort = object{"preserve": true}, object{"effort": "high"}
+	a.models.sessionStarted = true
+	before := a.snapshot()
+	generation := a.accountGeneration
+	w := httptest.NewRecorder()
+	go func() {
+		defer close(finished)
+		a.codex(w, httptest.NewRequest("POST", "/v1/responses", strings.NewReader(`{"model":"gpt-test","input":"test","stream":true}`)))
+	}()
+	t.Cleanup(func() {
+		_ = writer.Close()
+		select {
+		case <-finished:
+		case <-time.After(5 * time.Second):
+			t.Error("inference did not finish")
+		}
+	})
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("inference did not start")
+	}
+	result := controlCall(a, "/api/token-login", object{"token": "second-secret"})
+	if result.Code != 200 || !strings.Contains(result.Body.String(), `"ok":true`) {
+		t.Fatal("adding an account was blocked by inference", result.Body.String())
+	}
+	after := a.snapshot()
+	before.Accounts = after.Accounts
+	if !reflect.DeepEqual(before, after) || len(after.Accounts) != 2 || a.accountGeneration != generation || a.bearer != "existing-bearer" || a.usage["preserve"] != true || a.lastEffort["effort"] != "high" {
+		t.Fatal("adding changed the selected account or its inference state", publicAccounts(after))
+	}
+	if saved := readSavedAccounts(t, a); !reflect.DeepEqual(saved, after) {
+		t.Fatal("added account was not persisted")
+	}
+	// An explicit switch must still wait instead of changing the account used
+	// by requests that are already running. Adding does not queue a switch.
+	result = controlCall(a, "/api/accounts/switch", object{"username": "second"})
+	if result.Code == 200 || a.snapshot().Username != "first" {
+		t.Fatal("switched while inference was running", result.Body.String())
+	}
+	select {
+	case <-finished:
+		t.Fatal("adding interrupted inference")
+	default:
+	}
+	_, err := writer.Write([]byte("event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"r\",\"status\":\"completed\",\"output\":[]}}\n\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = writer.Close()
+	select {
+	case <-finished:
+	case <-time.After(5 * time.Second):
+		t.Fatal("inference did not complete")
+	}
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "response.completed") || a.snapshot().Username != "first" {
+		t.Fatal("original inference or account selection changed", w.Code)
+	}
+	result = controlCall(a, "/api/accounts/switch", object{"username": "second"})
+	if result.Code != 200 || a.snapshot().Username != "second" {
+		t.Fatal("saved account could not be selected after inference", result.Body.String())
+	}
+}
+
+func TestAccountsBusyDeviceLoginRedeemsOnlyOnce(t *testing.T) {
+	redeemed := 0
+	a := testApp(t, func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host == "github.com" {
+			redeemed++
+			return response(200, object{"access_token": "second-secret"}), nil
+		}
+		return accountTestTransport(r)
+	})
+	a.state = session{Token: "first-secret", Username: "first", Method: "token"}
+	a.routes.RLock()
+	result, err := a.pollLogin(context.Background(), "device-code")
+	a.routes.RUnlock()
+	if err != nil || result["ok"] != true || redeemed != 1 || a.pendingLogin.token != "" {
+		t.Fatal("device sign-in did not finish while busy", result, err, redeemed)
+	}
+	if s := readSavedAccounts(t, a); s.Username != "first" || len(s.Accounts) != 2 || s.Accounts[1].Method != "device" {
+		t.Fatal("device sign-in replaced the current connection", publicAccounts(s))
+	}
+}
+
+func TestAccountsBusyAddPreservesLocalProviderAndSetup(t *testing.T) {
+	a := testApp(t, accountTestTransport)
+	a.state = session{LocalModel: "qwen3-4b", LocalModels: []string{"qwen3-4b"}, Codex: true}
+	canceled := false
+	a.local.cancel = func() { canceled = true }
+	a.routes.RLock()
+	result := controlCall(a, "/api/token-login", object{"token": "second-secret"})
+	a.routes.RUnlock()
+	if result.Code != 200 || canceled || a.snapshot().LocalModel != "qwen3-4b" || !a.snapshot().Codex {
+		t.Fatal("adding GitHub changed the local provider or preparation", result.Body.String())
+	}
+	if s := readSavedAccounts(t, a); len(s.Accounts) != 1 || s.Accounts[0].Username != "second" || s.LocalModel != "qwen3-4b" {
+		t.Fatal("GitHub account was not saved alongside the local provider")
+	}
+}
+
+func TestAccountsBusyReauthorizationAndSaveFailure(t *testing.T) {
+	for _, failSave := range []bool{false, true} {
+		t.Run(map[bool]string{false: "reauthorize", true: "save failure"}[failSave], func(t *testing.T) {
+			a := testApp(t, accountTestTransport)
+			a.state = session{Token: "first-secret", Username: "first", Method: "token", Codex: true}
+			a.bearer, a.expiry = "old-bearer", 9999999999
+			before := a.snapshot()
+			if failSave {
+				if err := os.MkdirAll(a.path("session.json"), 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			a.routes.RLock()
+			result := controlCall(a, "/api/token-login", object{"token": "FIRST-secret"})
+			a.routes.RUnlock()
+			if failSave {
+				if result.Code == 200 || !reflect.DeepEqual(before, a.snapshot()) || a.bearer != "old-bearer" {
+					t.Fatal("failed save changed the live credentials", result.Body.String())
+				}
+				return
+			}
+			s := readSavedAccounts(t, a)
+			if result.Code != 200 || len(s.Accounts) != 1 || s.Token != "FIRST-secret" || s.Accounts[0].Token != s.Token || !s.Codex || a.bearer != "bearer-FIRST-secret" {
+				t.Fatal("same-identity reauthorization duplicated or lost the credential", result.Body.String())
+			}
+		})
 	}
 }
 

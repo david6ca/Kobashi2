@@ -59,6 +59,12 @@ func (a *App) openAI(w http.ResponseWriter, r *http.Request, copilotApp bool) {
 		a.local.proxy(w, r, state, false)
 		return
 	}
+	if !copilotApp && contains([]string{"/v1/responses", "/v1/responses/compact"}, r.URL.Path) && r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		log.Printf("request=%s client=Codex rejected reason=method_not_allowed websocket_upgrade=%t", requestLogID(r.Context()), strings.EqualFold(r.Header.Get("Upgrade"), "websocket"))
+		respond(w, http.StatusMethodNotAllowed, object{"error": object{"code": "method_not_allowed", "message": "Use POST for this endpoint; WebSocket is not supported."}})
+		return
+	}
 	if r.Method == "GET" && r.URL.Path == "/v1/models" {
 		if copilotApp {
 			raw, err := a.discover(r.Context(), false)
@@ -104,9 +110,11 @@ func (a *App) openAI(w http.ResponseWriter, r *http.Request, copilotApp bool) {
 		return
 	}
 	if len(body) > 256<<20 {
+		log.Printf("request=%s client=%s rejected reason=request_too_large source=local request_bytes_at_least=%d limit_bytes=%d", requestLogID(r.Context()), name, len(body), 256<<20)
 		respond(w, 413, object{"error": "Request exceeds 256 MiB"})
 		return
 	}
+	requestBytes := len(body)
 	var requestBody object
 	var metadata struct {
 		Model  string
@@ -130,6 +138,11 @@ func (a *App) openAI(w http.ResponseWriter, r *http.Request, copilotApp bool) {
 				body = jsonBytes(normalized)
 			}
 		}
+		if changed := a.pngPayloads.optimize(requestBody); changed > 0 {
+			before := len(body)
+			body = jsonBytes(requestBody)
+			log.Printf("request=%s client=%s lossless_png images=%d request_bytes=%d upstream_request_bytes=%d saved_bytes=%d", requestLogID(r.Context()), name, changed, before, len(body), before-len(body))
+		}
 	}
 	path := r.URL.RequestURI()
 	if !strings.HasPrefix(path, "/v1") {
@@ -148,7 +161,48 @@ func (a *App) openAI(w http.ResponseWriter, r *http.Request, copilotApp bool) {
 			respond(w, 502, object{"error": err.Error()})
 			return
 		}
-		if response.StatusCode == 400 || response.StatusCode == 403 || response.StatusCode == 404 || response.StatusCode == 410 {
+		if response.StatusCode == http.StatusRequestEntityTooLarge {
+			data, e := readResponse(response, 16<<20)
+			if e != nil {
+				respond(w, 502, object{"error": e.Error()})
+				return
+			}
+			var errorBody object
+			_ = json.Unmarshal(data, &errorBody)
+			detail := clone(parseError(errorBody))
+			if detail == nil {
+				detail = object{"message": str(errorBody["error"])}
+			}
+			log.Printf("request=%s client=%s upstream_failure status=413 model=%q request_bytes=%d upstream_request_bytes=%d code=%q message=%q", requestLogID(r.Context()), name, metadata.Model, requestBytes, len(body), str(detail["code"]), str(detail["message"]))
+			// Codex retries HTTP 413 even with X-Should-Retry: false, but treats
+			// HTTP 400 as a terminal request error. Keep the original status in
+			// diagnostics and headers; do not teach model rules or replay the body.
+			if parseError(errorBody) != nil || str(errorBody["error"]) != "" {
+				message := "Request too large for GitHub Copilot. Reduce attachments or shorten the conversation."
+				if upstreamMessage := str(detail["message"]); upstreamMessage != "" {
+					message += " Upstream: " + upstreamMessage
+				}
+				detail["message"] = message
+				if str(detail["code"]) == "" {
+					detail["code"] = "request_too_large"
+				}
+				if str(detail["type"]) == "" {
+					detail["type"] = "invalid_request_error"
+				}
+				errorBody["error"] = detail
+				data = jsonBytes(errorBody)
+				response.Header.Set("Content-Type", "application/json")
+				response.Header.Del("Content-Length")
+				response.Header.Del("Content-Encoding")
+			}
+			response.Body = io.NopCloser(bytes.NewReader(data))
+			response.Header.Set("X-Should-Retry", "false")
+			if !copilotApp {
+				response.StatusCode = http.StatusBadRequest
+				response.Header.Set("X-Kobashi-Upstream-Status", "413")
+				log.Printf("request=%s client=Codex translated_error upstream_status=413 downstream_status=400 reason=request_too_large", requestLogID(r.Context()))
+			}
+		} else if response.StatusCode == 400 || response.StatusCode == 403 || response.StatusCode == 404 || response.StatusCode == 410 {
 			data, e := readResponse(response, 16<<20)
 			if e != nil {
 				respond(w, 502, object{"error": e.Error()})
