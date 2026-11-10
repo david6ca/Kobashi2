@@ -312,11 +312,12 @@ final class NativeButton: NSButton {
             let textColor = connection ? statusColor : fg
             let fill = primary ? c.on : key == "disconnect" ? c.panel :
                 connection ? c.button : hover || isHighlighted ? c.hover : c.button
-            rounded(bounds, radius: min(10, bounds.height / 3), fill: fill,
+            let circular = key == "settings" || key == "cancelAccount"
+            rounded(bounds, radius: circular ? bounds.height / 2 : min(10, bounds.height / 3), fill: fill,
                     border: primary ? (hover || isHighlighted ? c.accent : c.on) :
                         hover || isHighlighted ? (connection ? statusColor : c.accent) : c.border)
-            if key == "settings" {
-                let image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
+            if circular {
+                let image = NSImage(systemSymbolName: key == "settings" ? "gearshape" : "xmark", accessibilityDescription: nil)
                 image?.isTemplate = true
                 let view = NSImageView(frame: NSRect(x: 8, y: 8, width: 16, height: 16))
                 view.image = image
@@ -335,7 +336,8 @@ final class NativeButton: NSButton {
             let rect = ["startup", "tray"].contains(key) ? NSRect(x: 304, y: 2, width: 28, height: 28) :
                 ["claude", "codex", "copilot"].contains(key) ? NSRect(x: bounds.width - 59, y: 9, width: 52, height: 32) :
                 bounds.insetBy(dx: 2, dy: 2)
-            let ring = NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6)
+            let radius = key == "settings" || key == "cancelAccount" ? rect.height / 2 : 6
+            let ring = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
             ring.lineWidth = 1
             c.accent.setStroke()
             ring.stroke()
@@ -623,22 +625,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         label(hint, key: "tokenTeaser", group: "idle", y: 215, height: 24, x: hintX, width: hintWidth, size: 12)
         button(link, key: "tokenView", group: "idle", y: 211, action: #selector(tokenView),
                x: hintX + hintWidth + 6, width: linkWidth, height: 24)
+        label("Add a Github account", key: "githubLabel", group: "add-account", y: 84, height: 20, x: 40, width: 320, size: 13)
         button("GitHub", key: "addGitHub", group: "add-account", y: 112, action: #selector(connect), x: 40, width: 320, height: 38)
-        label("Local model", key: "localLabel", group: "add-account", y: 171, height: 20, x: 40, width: 320, size: 13)
+        label("Add a local model", key: "localLabel", group: "add-account", y: 171, height: 20, x: 40, width: 320, size: 13)
         let modelPicker = AppearanceSelector(frame: .zero, pullsDown: false)
         modelPicker.target = self
         modelPicker.action = #selector(selectLocalModel(_:))
         modelPicker.setAccessibilityLabel("Local model")
         add(modelPicker, key: "localModel", group: "add-account", y: 199, height: 32, x: 40, width: 320)
-        label("", key: "localProgressText", group: "add-account", y: 242, height: 24, x: 40, width: 320, size: 12)
+        label("", key: "localProgressText", group: "add-account", y: 286, height: 24, x: 40, width: 320, size: 12)
         let progress = NSProgressIndicator()
         progress.style = .bar
         progress.isIndeterminate = false
         progress.minValue = 0
         progress.maxValue = 1
         progress.setAccessibilityLabel("Local setup progress")
-        add(progress, key: "localProgress", group: "add-account", y: 274, height: 8, x: 40, width: 320)
-        button("Add", key: "addLocal", group: "add-account", y: 298, action: #selector(addLocalModel), x: 240, width: 120, height: 34)
+        add(progress, key: "localProgress", group: "add-account", y: 318, height: 8, x: 40, width: 320)
+        button("Add", key: "addLocal", group: "add-account", y: 242, action: #selector(addLocalModel), x: 40, width: 120, height: 34)
         label("Access token", key: "tokenLabel", group: "token", y: 197, height: 12, x: 60, width: 280, size: 11)
         let token = NSSecureTextField()
         token.placeholderString = "Paste your access token"
@@ -662,7 +665,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         button("Connected", key: "disconnect", group: "connected", y: 87, action: #selector(disconnect), x: 237, width: 84, height: 28)
         button("Accounts", key: "accounts", group: "all", y: 87, action: #selector(showAccounts), x: 321, width: 28, height: 28)
         (controls["accounts"] as? NSButton)?.setAccessibilityLabel("Accounts")
-        button("Cancel", key: "cancelAccount", group: "all", y: 70, action: #selector(cancelAddAccount), x: 32, width: 76, height: 28)
+        button("Cancel", key: "cancelAccount", group: "all", y: 348, action: #selector(cancelAddAccount), x: 184, width: 32, height: 32)
         (controls["cancelAccount"] as? NSButton)?.keyEquivalent = "\u{1b}"
         label("AI credits this cycle", key: "usageLabel", group: "connected", y: 128, height: 16, x: 50, width: 170, size: 11)
         label("", key: "usageValue", group: "connected", y: 128, height: 16, x: 220, width: 129, size: 11)
@@ -1068,7 +1071,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         switch currentView {
         case "starting": noticeFrame = NSRect(x: 40, y: 150, width: 320, height: 90)
         case "connected": noticeFrame = NSRect(x: 32, y: 24, width: 248, height: 32)
-        case "add-account": noticeFrame = NSRect(x: 40, y: 298, width: 190, height: 50)
+        case "add-account": noticeFrame = NSRect(x: 176, y: 238, width: 184, height: 44)
         case "settings": noticeFrame = NSRect(x: 32, y: 70, width: 336, height: 32)
         // case "client", "server": noticeFrame = NSRect(x: 32, y: 316, width: 336, height: 48)
         case "token": noticeFrame = NSRect(x: 32, y: 308, width: 336, height: 40)
