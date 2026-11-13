@@ -11,7 +11,7 @@ import (
 
 func checkMac(smoke bool) error {
 	if !smoke {
-		for _, test := range []string{"macos-artwork.swift", "macos-startup.swift", "macos-toggles.swift", "macos-appearance.swift", "macos-accounts.swift", "macos-context.swift"} {
+		for _, test := range []string{"macos-artwork.swift", "macos-localization.swift", "macos-startup.swift", "macos-toggles.swift", "macos-appearance.swift", "macos-accounts.swift", "macos-context.swift"} {
 			if err := checkMacHarness(test); err != nil {
 				return err
 			}
@@ -77,7 +77,7 @@ func checkMacHarness(test string) error {
 	if err = os.WriteFile(filepath.Join(workspace, "main.swift"), append([]byte(strings.SplitN(string(source), entry, 2)[0]+"\n"), harness...), 0600); err != nil {
 		return err
 	}
-	app := filepath.Join(workspace, "Kobashi2 Lifecycle Test.app", "Contents")
+	app := filepath.Join(workspace, "ModelBridge Lifecycle Test.app", "Contents")
 	if err = os.MkdirAll(filepath.Join(app, "MacOS"), 0700); err != nil {
 		return err
 	}
@@ -86,12 +86,15 @@ func checkMacHarness(test string) error {
 			return err
 		}
 	}
-	plist := `<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>lifecycle-check</string><key>CFBundleName</key><string>Kobashi2 Lifecycle Test</string><key>CFBundleIdentifier</key><string>com.xjin6.kobashi.lifecycle-test</string><key>CFBundlePackageType</key><string>APPL</string></dict></plist>`
+	if err := copyFile(filepath.Join(root, "internal", "localization", "catalog.json"), filepath.Join(app, "Resources", "catalog.json")); err != nil {
+		return err
+	}
+	plist := `<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>lifecycle-check</string><key>CFBundleName</key><string>ModelBridge Lifecycle Test</string><key>CFBundleIdentifier</key><string>com.xjin6.kobashi.lifecycle-test</string><key>CFBundlePackageType</key><string>APPL</string></dict></plist>`
 	if err = os.WriteFile(filepath.Join(app, "Info.plist"), []byte(plist), 0600); err != nil {
 		return err
 	}
 	executable := filepath.Join(app, "MacOS", "lifecycle-check")
-	if err = run(workspace, os.Environ(), "xcrun", "--toolchain", "XcodeDefault", "swiftc", "-framework", "Cocoa", filepath.Join(workspace, "main.swift"), "-o", executable); err != nil {
+	if err = run(workspace, os.Environ(), "xcrun", "--toolchain", "XcodeDefault", "swiftc", "-module-cache-path", filepath.Join(workspace, "swift-module-cache"), "-framework", "Cocoa", filepath.Join(workspace, "main.swift"), "-o", executable); err != nil {
 		return err
 	}
 	return run(workspace, os.Environ(), executable)

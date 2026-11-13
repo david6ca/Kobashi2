@@ -23,10 +23,21 @@ func checkConnectionIcon(t *testing.T, data []byte) {
 		_, _, _, a := icon.At(bounds.Min.X+x*bounds.Dx()/512, bounds.Min.Y+y*bounds.Dy()/512).RGBA()
 		return a
 	}
-	for _, point := range []image.Point{{128, 256}, {256, 256}, {384, 256}, {128, 208}, {384, 208}} {
+	for _, point := range []image.Point{{96, 256}, {256, 256}, {416, 256}, {152, 200}, {360, 200}} {
 		pixel := color.NRGBAModel.Convert(icon.At(point.X*bounds.Dx()/512, point.Y*bounds.Dy()/512)).(color.NRGBA)
-		if pixel.A != 255 || pixel.R < 247 || pixel.G < 247 || pixel.B < 247 {
-			t.Fatal("connection icon must have solid circles and a connecting line", bounds, point)
+		minimum := uint8(247)
+		if bounds.Dx() < 48 {
+			// Thin strokes blend with the gradient at subpixel icon sizes.
+			minimum = 145
+		}
+		if pixel.A != 255 || pixel.R < minimum || pixel.G < minimum || pixel.B < minimum {
+			t.Fatal("connection icon must have outlined circles and a connecting line", bounds, point)
+		}
+	}
+	for _, point := range []image.Point{{152, 256}, {360, 256}, {256, 224}, {256, 288}} {
+		pixel := color.NRGBAModel.Convert(icon.At(point.X*bounds.Dx()/512, point.Y*bounds.Dy()/512)).(color.NRGBA)
+		if pixel.A != 255 || pixel.G > 200 {
+			t.Fatal("connection icon must keep hollow centers and a thin connecting line", bounds, point)
 		}
 	}
 	for _, point := range []image.Point{{0, 0}, {511, 0}, {0, 511}, {511, 511}} {

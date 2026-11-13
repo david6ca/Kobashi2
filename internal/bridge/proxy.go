@@ -155,11 +155,29 @@ func (a *App) openAI(w http.ResponseWriter, r *http.Request, copilotApp bool) {
 		}
 	}
 	authRetried := false
+	historyRetried := false
 	for attempt := 0; attempt < 4; attempt++ {
 		response, err := a.copilotWithRetry(r.Context(), r.Method, path, body, &authRetried)
 		if err != nil {
 			respond(w, 502, object{"error": err.Error()})
 			return
+		}
+		if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusBadRequest {
+			data, e := readResponse(response, 16<<20)
+			if e != nil {
+				respond(w, 502, object{"error": e.Error()})
+				return
+			}
+			if !historyRetried && attempt < 3 && r.Method == http.MethodPost &&
+				(r.URL.Path == "/v1/responses" || r.URL.Path == "/v1/responses/compact") && inputConnectionMismatch(response.StatusCode, data) {
+				if next, changed := repairConnectionHistory(requestBody); changed {
+					historyRetried = true
+					requestBody, body = next, jsonBytes(next)
+					log.Printf("request=%s client=%s retry reason=input_connection_mismatch attempt=1 max_retries=1", requestLogID(r.Context()), name)
+					continue
+				}
+			}
+			response.Body = io.NopCloser(bytes.NewReader(data))
 		}
 		if response.StatusCode == http.StatusRequestEntityTooLarge {
 			data, e := readResponse(response, 16<<20)

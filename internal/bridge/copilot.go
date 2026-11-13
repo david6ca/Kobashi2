@@ -453,6 +453,9 @@ func copilotSetupModel(models []object, preferred string) (object, string, error
 }
 
 func (a *App) enableCopilot() (string, error) {
+	if err := acquireClientAccess(a.options.Home, "copilot"); err != nil {
+		return "", err
+	}
 	a.copilotRouting = copilotRouting{explicit: true}
 	selected, selectionErr := a.selectedCopilotSession()
 	sessions, err := a.localCopilotSessions()

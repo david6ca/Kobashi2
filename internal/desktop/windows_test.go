@@ -205,7 +205,7 @@ func TestNativeWindowControlsSizeSettingsAndTrayLifecycle(t *testing.T) {
 			}
 		}
 	*/
-	for _, title := range []string{"Connect to &Server", "Share this &Kobashi2"} {
+	for _, title := range []string{"Connect to &Server", "Share this &ModelBridge"} {
 		if proc("FindWindowExW", h, 0, 0, uintptr(unsafe.Pointer(wide(title)))) != 0 {
 			t.Fatal("network settings entry is still present", title)
 		}

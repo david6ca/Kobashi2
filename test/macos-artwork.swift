@@ -67,9 +67,9 @@ for scale in [1, 2] {
         pixels.colorAt(x: Int(x / 22 * CGFloat(pixels.pixelsWide)),
                        y: Int(y / 18 * CGFloat(pixels.pixelsHigh)))!.alphaComponent
     }
-    check(alpha(5, 9) > 0.99 && alpha(17, 9) > 0.99 && alpha(11, 9) > 0.99 &&
-          alpha(5, 7) > 0.99 && alpha(17, 7) > 0.99,
-          "The \(scale)x menu-bar mark has two solid circles joined by a line")
+    check(alpha(5, 9) < 0.01 && alpha(17, 9) < 0.01 && alpha(11, 9) > 0.5 &&
+          alpha(5, 5) > 0.5 && alpha(17, 5) > 0.5,
+          "The \(scale)x menu-bar mark matches the app's outlined circles and connector")
     check(alpha(0, 0) == 0 && alpha(11, 5) == 0 && alpha(11, 12) == 0,
           "The \(scale)x menu-bar mark stays transparent outside the connection shape")
 }

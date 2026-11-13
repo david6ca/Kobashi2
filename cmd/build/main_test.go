@@ -20,12 +20,12 @@ func TestWindowsVersionResourceUsesAppName(t *testing.T) {
 		return data
 	}
 	data := versionResource("2.1.7")
-	for _, value := range []string{"Kobashi2", "Kobashi2.exe", "2.1.7"} {
+	for _, value := range []string{"ModelBridge", "ModelBridge.exe", "2.1.7"} {
 		if !bytes.Contains(data, encoded(value)) {
 			t.Fatal("missing Windows product metadata", value)
 		}
 	}
-	for _, value := range []string{"Kobashi", "Kobashi.exe"} {
+	for _, value := range []string{"Kobashi", "Kobashi.exe", "Kobashi2", "Kobashi2.exe"} {
 		if bytes.Contains(data, encoded(value)) {
 			t.Fatal("old Windows product metadata retained", value)
 		}
@@ -59,17 +59,17 @@ func TestPublishOnlyFinishedArtifactsWithChecksums(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeReleaseFixture(t, dist, map[string]string{
-		"Kobashi2.exe":                     "old exe",
-		"Kobashi2.app/Contents/Info.plist": "old plist",
+		"ModelBridge.exe":                     "old exe",
+		"ModelBridge.app/Contents/Info.plist": "old plist",
 	})
-	built := filepath.Join(scratch, "Kobashi2.exe")
+	built := filepath.Join(scratch, "ModelBridge.exe")
 	if err := os.WriteFile(built, []byte("native"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := publish(dist, built, "Kobashi2.exe"); err != nil {
+	if err := publish(dist, built, "ModelBridge.exe"); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(filepath.Join(dist, "Kobashi2.app", "Contents", "Info.plist"))
+	data, err := os.ReadFile(filepath.Join(dist, "ModelBridge.app", "Contents", "Info.plist"))
 	if err != nil || string(data) != "old plist" {
 		t.Fatal("other platform overwritten", err)
 	}
@@ -113,13 +113,13 @@ func writeReleaseFixture(t *testing.T, root string, files map[string]string) {
 func TestPublishCreatesAppBundle(t *testing.T) {
 	scratch := t.TempDir()
 	writeReleaseFixture(t, scratch, map[string]string{
-		"Kobashi2.app/Contents/Info.plist": "plist",
+		"ModelBridge.app/Contents/Info.plist": "plist",
 	})
 	dist := filepath.Join(t.TempDir(), "release with spaces")
-	if err := publish(dist, filepath.Join(scratch, "Kobashi2.app"), "Kobashi2.app"); err != nil {
+	if err := publish(dist, filepath.Join(scratch, "ModelBridge.app"), "ModelBridge.app"); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(filepath.Join(dist, "Kobashi2.app", "Contents", "Info.plist"))
+	data, err := os.ReadFile(filepath.Join(dist, "ModelBridge.app", "Contents", "Info.plist"))
 	if err != nil || string(data) != "plist" {
 		t.Fatal("bundle not published", err)
 	}
@@ -133,20 +133,20 @@ func TestPublishAppReplacesBundleAndPreservesWindowsRelease(t *testing.T) {
 	dist := t.TempDir()
 	scratch := t.TempDir()
 	writeReleaseFixture(t, dist, map[string]string{
-		"Kobashi2.exe":                       "windows",
-		"Kobashi2.app/Contents/Info.plist":   "old plist",
-		"Kobashi2.app/Contents/obsolete.txt": "obsolete",
+		"ModelBridge.exe":                       "windows",
+		"ModelBridge.app/Contents/Info.plist":   "old plist",
+		"ModelBridge.app/Contents/obsolete.txt": "obsolete",
 	})
 	bundle := map[string]string{
-		"Kobashi2.app/Contents/Info.plist":                  "plist",
-		"Kobashi2.app/Contents/MacOS/kobashi":               "cocoa",
-		"Kobashi2.app/Contents/Resources/AppIcon.icns":      "icon",
-		"Kobashi2.app/Contents/Resources/bin/kobashi-arm64": "arm64",
-		"Kobashi2.app/Contents/Resources/bin/kobashi-x64":   "x64",
+		"ModelBridge.app/Contents/Info.plist":                  "plist",
+		"ModelBridge.app/Contents/MacOS/kobashi":               "cocoa",
+		"ModelBridge.app/Contents/Resources/AppIcon.icns":      "icon",
+		"ModelBridge.app/Contents/Resources/bin/kobashi-arm64": "arm64",
+		"ModelBridge.app/Contents/Resources/bin/kobashi-x64":   "x64",
 	}
 	writeReleaseFixture(t, scratch, bundle)
-	built := filepath.Join(scratch, "Kobashi2.app")
-	if err := publish(dist, built, "Kobashi2.app"); err != nil {
+	built := filepath.Join(scratch, "ModelBridge.app")
+	if err := publish(dist, built, "ModelBridge.app"); err != nil {
 		t.Fatal(err)
 	}
 	for name, content := range bundle {
@@ -164,10 +164,10 @@ func TestPublishAppReplacesBundleAndPreservesWindowsRelease(t *testing.T) {
 			t.Fatal("bundle permissions changed", name, err)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dist, "Kobashi2.app", "Contents", "obsolete.txt")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dist, "ModelBridge.app", "Contents", "obsolete.txt")); !os.IsNotExist(err) {
 		t.Fatal("obsolete bundle file retained", err)
 	}
-	data, err := os.ReadFile(filepath.Join(dist, "Kobashi2.exe"))
+	data, err := os.ReadFile(filepath.Join(dist, "ModelBridge.exe"))
 	if err != nil || string(data) != "windows" {
 		t.Fatal("Windows release overwritten", err)
 	}
@@ -198,9 +198,9 @@ func TestPublishAppReplacesBundleAndPreservesWindowsRelease(t *testing.T) {
 func TestReplaceArtifactRestoresPreviousBundleOnFailure(t *testing.T) {
 	dist := t.TempDir()
 	writeReleaseFixture(t, dist, map[string]string{
-		"Kobashi2.app/Contents/Info.plist": "previous",
+		"ModelBridge.app/Contents/Info.plist": "previous",
 	})
-	target := filepath.Join(dist, "Kobashi2.app")
+	target := filepath.Join(dist, "ModelBridge.app")
 	if err := replaceArtifact(filepath.Join(dist, "missing.app"), target, func() error {
 		t.Fatal("commit called after artifact replacement failed")
 		return nil
@@ -220,9 +220,9 @@ func TestReplaceArtifactRestoresPreviousBundleOnFailure(t *testing.T) {
 func TestReplaceArtifactRestoresPreviousReleaseWhenCommitFails(t *testing.T) {
 	dist := t.TempDir()
 	source := filepath.Join(t.TempDir(), "new.exe")
-	target := filepath.Join(dist, "Kobashi2.exe")
+	target := filepath.Join(dist, "ModelBridge.exe")
 	writeReleaseFixture(t, dist, map[string]string{
-		"Kobashi2.exe":   "previous",
+		"ModelBridge.exe":   "previous",
 		"SHA256SUMS.txt": "previous checksums",
 	})
 	if err := os.WriteFile(source, []byte("new"), 0600); err != nil {
@@ -234,7 +234,7 @@ func TestReplaceArtifactRestoresPreviousReleaseWhenCommitFails(t *testing.T) {
 		t.Fatal("commit failure not preserved", err)
 	}
 	for name, want := range map[string]string{
-		"Kobashi2.exe":   "previous",
+		"ModelBridge.exe":   "previous",
 		"SHA256SUMS.txt": "previous checksums",
 	} {
 		data, err := os.ReadFile(filepath.Join(dist, name))
@@ -253,13 +253,13 @@ func TestReplaceArtifactRestoresPreviousReleaseWhenCommitFails(t *testing.T) {
 }
 
 func TestPublishRollsBackWhenChecksumsCannotBePublished(t *testing.T) {
-	for _, name := range []string{"Kobashi2.exe", "Kobashi2.app"} {
+	for _, name := range []string{"ModelBridge.exe", "ModelBridge.app"} {
 		for _, existing := range []bool{false, true} {
 			t.Run(name+map[bool]string{false: "/new", true: "/existing"}[existing], func(t *testing.T) {
 				dist := t.TempDir()
 				scratch := t.TempDir()
 				file := name
-				if name == "Kobashi2.app" {
+				if name == "ModelBridge.app" {
 					file = filepath.Join(name, "Contents", "Info.plist")
 				}
 				writeReleaseFixture(t, scratch, map[string]string{file: "new release"})
@@ -301,8 +301,8 @@ func TestPublishRollsBackWhenChecksumsCannotBePublished(t *testing.T) {
 func TestReplaceArtifactKeepsRecoveryCopyWhenRollbackFails(t *testing.T) {
 	dist := t.TempDir()
 	source := filepath.Join(t.TempDir(), "new.exe")
-	target := filepath.Join(dist, "Kobashi2.exe")
-	writeReleaseFixture(t, dist, map[string]string{"Kobashi2.exe": "previous"})
+	target := filepath.Join(dist, "ModelBridge.exe")
+	writeReleaseFixture(t, dist, map[string]string{"ModelBridge.exe": "previous"})
 	if err := os.WriteFile(source, []byte("new"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +322,7 @@ func TestReplaceArtifactKeepsRecoveryCopyWhenRollbackFails(t *testing.T) {
 		if !file.IsDir() {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(dist, file.Name(), "Kobashi2.exe"))
+		data, err := os.ReadFile(filepath.Join(dist, file.Name(), "ModelBridge.exe"))
 		if err != nil || string(data) != "previous" {
 			t.Fatal("recovery copy missing", err)
 		}

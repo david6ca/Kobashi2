@@ -71,20 +71,20 @@ func (w *Window) showAccounts() error {
 	}
 	for i, account := range w.popupAccounts {
 		name := "@" + text(account["username"])
-		label := "Switch to " + name
+		label := w.tr("Switch to this account") + ": " + name
 		if account["selected"] == true {
-			label = name + ", current account"
+			label = name + ", " + w.tr("Current account")
 		}
 		if err := add(label, accountControlBase+i*2, 0, i*36, 228, 36, w.accountList); err != nil {
 			w.closeAccounts()
 			return err
 		}
-		if err := add("Remove "+name, accountControlBase+i*2+1, 228, i*36, 36, 36, w.accountList); err != nil {
+		if err := add(w.tr("Remove account")+": "+name, accountControlBase+i*2+1, 228, i*36, 36, 36, w.accountList); err != nil {
 			w.closeAccounts()
 			return err
 		}
 	}
-	if err := add("Add account", idAddAccount, 8, height+9, 264, 32, w.accountPopup); err != nil {
+	if err := add(w.tr("Add account"), idAddAccount, 8, height+9, 264, 32, w.accountPopup); err != nil {
 		w.closeAccounts()
 		return err
 	}

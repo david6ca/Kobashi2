@@ -1,0 +1,39 @@
+// !$*UTF8*$!
+{ archiveVersion = 1; classes = {}; objectVersion = 56; objects = {
+5FDD02E58BE82DCD0DEACE92 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../main.swift"; sourceTree = "<group>"; };
+BD16F8F28CB212B6C01996C4 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppStore.swift"; sourceTree = "<group>"; };
+17FD947880D52CD5B0AC7F68 = { isa = PBXFileReference; lastKnownFileType = text.json; path = "../../internal/localization/catalog.json"; sourceTree = "<group>"; };
+4645D5AEFE07FB008698F5A0 = { isa = PBXFileReference; lastKnownFileType = folder; path = "Runtime"; sourceTree = "<group>"; };
+CA32AD6AC21C5F361B60D078 = { isa = PBXFileReference; lastKnownFileType = text.xml; path = "PrivacyInfo.xcprivacy"; sourceTree = "<group>"; };
+BEB20FCDDA50A14EB81C598B = { isa = PBXFileReference; lastKnownFileType = image.icns; path = "AppIcon.icns"; sourceTree = "<group>"; };
+043A8BBABF52EC8034D1155D = { isa = PBXFileReference; lastKnownFileType = image.png; path = "../../assets/kobashi-icon.png"; sourceTree = "<group>"; };
+1501D8E8A4584C1399DE92FB = { isa = PBXFileReference; lastKnownFileType = image.png; path = "../../assets/github.png"; sourceTree = "<group>"; };
+B115F0DD3CF53E6E5064A859 = { isa = PBXFileReference; lastKnownFileType = image.png; path = "../../assets/claude.png"; sourceTree = "<group>"; };
+BA5A820B796F69B0E68DDD51 = { isa = PBXFileReference; lastKnownFileType = image.png; path = "../../assets/codex.png"; sourceTree = "<group>"; };
+A8792157CB4F27FB949C035F = { isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ModelBridge.app; sourceTree = BUILT_PRODUCTS_DIR; };
+E6A9AFC644BE8CA50C67467C = { isa = PBXBuildFile; fileRef = 5FDD02E58BE82DCD0DEACE92; };
+594E0A9E197D7D86D1305F2D = { isa = PBXBuildFile; fileRef = BD16F8F28CB212B6C01996C4; };
+B507E87B978CA559D5BBDC2C = { isa = PBXBuildFile; fileRef = 17FD947880D52CD5B0AC7F68; };
+791B99615613BC25A7595755 = { isa = PBXBuildFile; fileRef = 4645D5AEFE07FB008698F5A0; };
+C4BD8249E35F0A35B2FB277C = { isa = PBXBuildFile; fileRef = CA32AD6AC21C5F361B60D078; };
+A2142ACEBB2006CE50DFF469 = { isa = PBXBuildFile; fileRef = BEB20FCDDA50A14EB81C598B; };
+040B99104B649C65D4BA13DD = { isa = PBXBuildFile; fileRef = 043A8BBABF52EC8034D1155D; };
+BDAFE0B36420FA2A5AC1AAD5 = { isa = PBXBuildFile; fileRef = 1501D8E8A4584C1399DE92FB; };
+37740D21A5500FD152C50F0A = { isa = PBXBuildFile; fileRef = B115F0DD3CF53E6E5064A859; };
+14CA7237298D779D03BD5013 = { isa = PBXBuildFile; fileRef = BA5A820B796F69B0E68DDD51; };
+878A52FC5FF6A57D50B7B870 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (E6A9AFC644BE8CA50C67467C,594E0A9E197D7D86D1305F2D); runOnlyForDeploymentPostprocessing = 0; };
+41D311A605520FC7B8B9A980 = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (B507E87B978CA559D5BBDC2C,791B99615613BC25A7595755,C4BD8249E35F0A35B2FB277C,A2142ACEBB2006CE50DFF469,040B99104B649C65D4BA13DD,BDAFE0B36420FA2A5AC1AAD5,37740D21A5500FD152C50F0A,14CA7237298D779D03BD5013); runOnlyForDeploymentPostprocessing = 0; };
+E2AA269EB967A8853A258BFA = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+05D28061FE98016837891EB5 = { isa = PBXShellScriptBuildPhase; alwaysOutOfDate = 1; buildActionMask = 2147483647; files = (); inputPaths = (); outputPaths = (); runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/zsh; shellScript = "\"$SRCROOT/../../scripts/app-store-helpers.sh\""; };
+0B6F395CA14AC202374D5CFF = { isa = PBXShellScriptBuildPhase; alwaysOutOfDate = 1; buildActionMask = 2147483647; files = (); inputPaths = (); outputPaths = (); runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/zsh; shellScript = "python3 \"$SRCROOT/../../scripts/sign-app-store-runtime.py\""; };
+0A3E27B8CA818264D75C8D81 = { isa = PBXGroup; children = (A8792157CB4F27FB949C035F); name = Products; sourceTree = "<group>"; };
+AD936FCBED631FA67E05C3EA = { isa = PBXGroup; children = (5FDD02E58BE82DCD0DEACE92,BD16F8F28CB212B6C01996C4,17FD947880D52CD5B0AC7F68,4645D5AEFE07FB008698F5A0,CA32AD6AC21C5F361B60D078,BEB20FCDDA50A14EB81C598B,043A8BBABF52EC8034D1155D,1501D8E8A4584C1399DE92FB,B115F0DD3CF53E6E5064A859,BA5A820B796F69B0E68DDD51,0A3E27B8CA818264D75C8D81); sourceTree = "<group>"; };
+12E8090DEFD108354C820616 = { isa = XCBuildConfiguration; buildSettings = { CODE_SIGN_ENTITLEMENTS = ModelBridge.entitlements; CODE_SIGN_STYLE = Automatic; ENABLE_APP_SANDBOX = YES; ENABLE_USER_SCRIPT_SANDBOXING = NO; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Info.plist; MACOSX_DEPLOYMENT_TARGET = 13.0; PRODUCT_BUNDLE_IDENTIFIER = com.pomegram.modelbridge; PRODUCT_NAME = ModelBridge; SDKROOT = macosx; SWIFT_VERSION = 5.0; SWIFT_ACTIVE_COMPILATION_CONDITIONS = APP_STORE; CURRENT_PROJECT_VERSION = 1; MARKETING_VERSION = 2.2.1; COMBINE_HIDPI_IMAGES = YES; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; name = Debug; };
+685EC5AD8CAF20CBA30EAD2F = { isa = XCBuildConfiguration; buildSettings = { CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; }; name = Debug; };
+534997669BF736E27ED0191E = { isa = XCBuildConfiguration; buildSettings = { CODE_SIGN_ENTITLEMENTS = ModelBridge.entitlements; CODE_SIGN_STYLE = Automatic; ENABLE_APP_SANDBOX = YES; ENABLE_USER_SCRIPT_SANDBOXING = NO; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Info.plist; MACOSX_DEPLOYMENT_TARGET = 13.0; PRODUCT_BUNDLE_IDENTIFIER = com.pomegram.modelbridge; PRODUCT_NAME = ModelBridge; SDKROOT = macosx; SWIFT_VERSION = 5.0; SWIFT_ACTIVE_COMPILATION_CONDITIONS = APP_STORE; CURRENT_PROJECT_VERSION = 1; MARKETING_VERSION = 2.2.1; COMBINE_HIDPI_IMAGES = YES; SWIFT_OPTIMIZATION_LEVEL = "-O"; }; name = Release; };
+664642617E4A7D68CDAE216B = { isa = XCBuildConfiguration; buildSettings = { CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; }; name = Release; };
+175AB01246347EE3CB3AD67C = { isa = XCConfigurationList; buildConfigurations = (12E8090DEFD108354C820616,534997669BF736E27ED0191E); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+C631E4B921CE4474D0AB93BD = { isa = XCConfigurationList; buildConfigurations = (685EC5AD8CAF20CBA30EAD2F,664642617E4A7D68CDAE216B); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+34A04005BCAF206EEC990BD9 = { isa = PBXNativeTarget; buildConfigurationList = 175AB01246347EE3CB3AD67C; buildPhases = (05D28061FE98016837891EB5,878A52FC5FF6A57D50B7B870,E2AA269EB967A8853A258BFA,41D311A605520FC7B8B9A980,0B6F395CA14AC202374D5CFF); buildRules = (); dependencies = (); name = ModelBridge; productName = ModelBridge; productReference = A8792157CB4F27FB949C035F; productType = "com.apple.product-type.application"; };
+244210E48437B6556980A702 = { isa = PBXProject; attributes = { BuildIndependentTargetsInParallel = YES; LastUpgradeCheck = 2720; }; buildConfigurationList = C631E4B921CE4474D0AB93BD; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; knownRegions = (en,Base); mainGroup = AD936FCBED631FA67E05C3EA; productRefGroup = 0A3E27B8CA818264D75C8D81; projectDirPath = ""; projectRoot = ""; targets = (34A04005BCAF206EEC990BD9); };
+}; rootObject = 244210E48437B6556980A702; }

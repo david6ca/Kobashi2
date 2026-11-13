@@ -19,6 +19,8 @@ import (
 func main() {
 	target := flag.String("target", runtime.GOOS, "windows or darwin")
 	destination := flag.String("output", "", "Directory for finished artifacts; default: dist")
+	storeScreenshots := flag.Bool("store-screenshots", false, "Capture the current native window compositor for store assets")
+	testLocalization := flag.Bool("test-mac-localization", false, "Run offscreen native localization/menu checks and optional screenshot capture")
 	testMac := flag.Bool("test-mac", false, "Run isolated Cocoa lifecycle checks on macOS")
 	testArtwork := flag.Bool("test-mac-artwork", false, "Run offscreen Cocoa artwork checks without opening windows")
 	testAccounts := flag.Bool("test-mac-accounts", false, "Run isolated Cocoa account-switcher checks")
@@ -26,7 +28,11 @@ func main() {
 	smoke := flag.Bool("smoke", false, "Run the interactive isolated Cocoa smoke check")
 	flag.Parse()
 	var err error
-	if *testContext {
+	if *storeScreenshots {
+		err = checkMacHarness("macos-store-screenshots.swift")
+	} else if *testLocalization {
+		err = checkMacHarness("macos-localization.swift")
+	} else if *testContext {
 		err = checkMacHarness("macos-context.swift")
 	} else if *testAccounts {
 		err = checkMacHarness("macos-accounts.swift")
@@ -228,7 +234,7 @@ func build(target, destination string) error {
 	if err = os.MkdirAll(output, 0700); err != nil {
 		return err
 	}
-	name := "Kobashi2.exe"
+	name := "ModelBridge.exe"
 	if target == "windows" {
 		icon, readErr := os.ReadFile(filepath.Join(workspace, "assets", "kobashi-icon.ico"))
 		if readErr != nil {
@@ -243,7 +249,7 @@ func build(target, destination string) error {
 			return err
 		}
 	} else {
-		name = "Kobashi2.app"
+		name = "ModelBridge.app"
 		if err = buildMac(workspace, output, env, pkg.Version); err != nil {
 			return err
 		}
@@ -262,7 +268,7 @@ func build(target, destination string) error {
 	return nil
 }
 func buildMac(workspace, output string, env []string, version string) error {
-	app := filepath.Join(output, "Kobashi2.app", "Contents")
+	app := filepath.Join(output, "ModelBridge.app", "Contents")
 	binaries := filepath.Join(app, "Resources", "bin")
 	if err := os.MkdirAll(binaries, 0700); err != nil {
 		return err
@@ -303,12 +309,16 @@ func buildMac(workspace, output string, env []string, version string) error {
 	if err := run(workspace, env, "iconutil", "-c", "icns", filepath.Join(output, "AppIcon.iconset"), "-o", filepath.Join(app, "Resources", "AppIcon.icns")); err != nil {
 		return err
 	}
+	if err := copyFile(filepath.Join(workspace, "internal", "localization", "catalog.json"), filepath.Join(app, "Resources", "catalog.json")); err != nil {
+		return err
+	}
 	plist := `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict><key>CFBundleName</key><string>Kobashi2</string><key>CFBundleDisplayName</key><string>Kobashi2</string>
-<key>CFBundleIdentifier</key><string>com.xjin6.kobashi</string><key>CFBundleVersion</key><string>` + version + `</string>
+<plist version="1.0"><dict><key>CFBundleName</key><string>ModelBridge</string><key>CFBundleDisplayName</key><string>ModelBridge</string>
+<key>CFBundleIdentifier</key><string>com.pomegram.modelbridge</string><key>CFBundleVersion</key><string>` + version + `</string>
 <key>CFBundleShortVersionString</key><string>` + version + `</string><key>CFBundleExecutable</key><string>kobashi</string>
 <key>CFBundleIconFile</key><string>AppIcon</string><key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleDevelopmentRegion</key><string>en</string><key>CFBundleLocalizations</key><array><string>en</string><string>zh-Hans</string><string>zh-Hant</string><string>ja</string><string>ko</string><string>de</string><string>fr</string><string>pt-BR</string><string>es</string><string>ar</string><string>hi</string><string>ru</string><string>vi</string></array>
 <key>LSMinimumSystemVersion</key><string>13.0</string><key>NSHighResolutionCapable</key><true/>
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict></dict></plist>`
 	return os.WriteFile(filepath.Join(app, "Info.plist"), []byte(plist), 0600)
@@ -422,7 +432,7 @@ func publish(dir, built, name string) error {
 		return errors.New("release copy checksum mismatch")
 	}
 	lines := []string{}
-	for _, release := range []string{"Kobashi2.exe", "Kobashi2.app"} {
+	for _, release := range []string{"ModelBridge.exe", "ModelBridge.app"} {
 		if release == name {
 			lines = append(lines, expected...)
 			continue

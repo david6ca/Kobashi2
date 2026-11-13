@@ -106,8 +106,8 @@ func (w *Window) layout() {
 			old, _, _ := gdi.NewProc("SelectObject").Call(dc, w.small)
 			for _, c := range []*control{hint, link} {
 				var extent point
-				if result, _, _ := gdi.NewProc("GetTextExtentPoint32W").Call(dc, uintptr(unsafe.Pointer(wide(c.title))),
-					uintptr(len(syscall.StringToUTF16(c.title))-1), uintptr(unsafe.Pointer(&extent))); result == 0 {
+				if result, _, _ := gdi.NewProc("GetTextExtentPoint32W").Call(dc, uintptr(unsafe.Pointer(wide(w.tr(c.title)))),
+					uintptr(len(syscall.StringToUTF16(w.tr(c.title)))-1), uintptr(unsafe.Pointer(&extent))); result == 0 {
 					w.notice = "Windows could not measure the sign-in text."
 				} else {
 					c.w = (int(extent.X)*96+w.dpi-1)/w.dpi + 8
@@ -223,6 +223,9 @@ func (p painter) text(value string, x, y, width, height int, font uintptr, rgb u
 	r := rect{int32(p.s(x)), int32(p.s(y)), int32(p.s(x + width)), int32(p.s(y + height))}
 	if proc("SendMessageW", p.w.Handle, 0x129, 0, 0)&2 != 0 {
 		flags |= 0x100000
+	}
+	if p.w.locale() == "ar" {
+		flags |= 0x20000
 	}
 	proc("DrawTextW", p.dc, uintptr(unsafe.Pointer(wide(value))), ^uintptr(0), uintptr(unsafe.Pointer(&r)), flags)
 }
@@ -380,7 +383,7 @@ func (w *Window) buffered(dc uintptr, width, height int, draw func(painter)) {
 	bitmap, _, _ := gdi.NewProc("CreateCompatibleBitmap").Call(dc, uintptr(width*w.dpi/96), uintptr(height*w.dpi/96))
 	old, _, _ := gdi.NewProc("SelectObject").Call(mem, bitmap)
 	draw(painter{w, mem})
-	gdi.NewProc("BitBlt").Call(dc, 0, 0, uintptr(width*w.dpi/96), uintptr(height*w.dpi/96), mem, 0, 0, 0xcc0020)
+	gdi.NewProc("BitBlt").Call(dc, 0, 0, uintptr(width*w.dpi/96), uintptr(height*w.dpi/96), mem, 0, 0, 0x80cc0020)
 	gdi.NewProc("SelectObject").Call(mem, old)
 	gdi.NewProc("DeleteObject").Call(bitmap)
 	gdi.NewProc("DeleteDC").Call(mem)
@@ -486,11 +489,11 @@ func (w *Window) paintControl(c control, dc uintptr) {
 			p.text(title, 27, 0, width-35, c.h, w.small, colors.accent, 0x8824)
 		case 8:
 			used, total, _ := w.usage()
-			p.text("AI credits this cycle", 0, 0, 170, c.h, w.tiny, colors.muted, 0x824)
-			p.text(credits(used)+" / "+credits(total), 170, 0, c.w-170, c.h, w.tiny, fg, 0x826)
+			p.text(w.tr("AI credits this cycle"), 0, 0, 170, c.h, w.tiny, colors.muted, 0x824)
+			p.text(w.credits(used)+" / "+w.credits(total), 170, 0, c.w-170, c.h, w.tiny, fg, 0x826)
 		case 9, 20, 23:
 			p.text(title, 0, 0, c.w, c.h, w.heading, fg, 0x824)
-		case idAppearanceLabel:
+		case idAppearanceLabel, idLanguageLabel:
 			p.text(title, 0, 0, c.w, c.h, w.font, fg, 0x824)
 		case idClaude, idCodex, idCopilot:
 			p.round(10, 6, 32, 32, 8, colors.tile, colors.border)
@@ -508,7 +511,7 @@ func (w *Window) paintControl(c control, dc uintptr) {
 				dot = colors.connected
 			}
 			p.round(58, 29, 8, 8, 4, dot, dot)
-			p.text(word, 74, 20, 180, 24, w.font, fg, 0x824)
+			p.text(w.tr(word), 74, 20, 180, 24, w.font, fg, 0x824)
 			track, knob := colors.toggle, 2
 			if on {
 				track, knob = colors.on, 22
@@ -527,6 +530,9 @@ func (w *Window) paintControl(c control, dc uintptr) {
 				p.line(312, 16, 316, 20, 2, colors.knob)
 				p.line(316, 20, 324, 11, 2, colors.knob)
 			}
+		case idSettingsBack:
+			p.line(19, 9, 12, 16, 2, colors.muted)
+			p.line(12, 16, 19, 23, 2, colors.muted)
 		case idTokenView, idBrowser, idProject:
 			rgb, flags := colors.accent, uintptr(0x825)
 			if c.id == idProject {

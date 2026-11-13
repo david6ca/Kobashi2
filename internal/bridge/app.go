@@ -79,6 +79,7 @@ type App struct {
 	accountGeneration             uint64
 	lastEffort                    object
 	appearance                    string
+	language                      string
 	models                        *modelRegistry
 	pngPayloads                   pngPayloadOptimizer
 	client                        *http.Client
@@ -109,6 +110,7 @@ func New(options Options) (*App, error) {
 		}
 		options.Home = home
 	}
+	prepareStoreOptions(&options)
 	if options.CodexHome == "" {
 		options.CodexHome = os.Getenv("CODEX_HOME")
 		if options.CodexHome == "" {
@@ -176,6 +178,7 @@ func New(options Options) (*App, error) {
 	if err != nil {
 		a.report(err)
 	}
+	a.loadLanguage()
 	return a, nil
 }
 func (a *App) ControlToken() string { return a.options.ControlToken }
@@ -189,7 +192,7 @@ func (a *App) report(err error) {
 	if err == nil {
 		return
 	}
-	log.Printf("Kobashi2: %v", err)
+	log.Printf("ModelBridge: %v", err)
 	a.mu.Lock()
 	a.lastError = err.Error()
 	a.mu.Unlock()
@@ -204,10 +207,10 @@ func (a *App) Start() error {
 			for _, l := range listeners {
 				l.Close()
 			}
-			return fmt.Errorf("port %d is already in use; quit the existing Kobashi2 (or Kobashi) yourself before switching versions: %w", port, err)
+			return fmt.Errorf("port %d is already in use; quit the existing ModelBridge (or legacy Kobashi2/Kobashi) yourself before switching versions: %w", port, err)
 		}
 		listeners = append(listeners, listener)
-		log.Printf("Kobashi2 listening address=%s", listener.Addr())
+		log.Printf("ModelBridge listening address=%s", listener.Addr())
 	}
 	for i, handler := range handlers {
 		server := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 90 * time.Second,
@@ -234,7 +237,7 @@ func (a *App) initialize() {
 		a.ready = true
 		connected := a.state.active()
 		a.mu.Unlock()
-		log.Printf("Kobashi2 ready connected=%t", connected)
+		log.Printf("ModelBridge ready connected=%t", connected)
 	}()
 	/*
 		defer func() {
@@ -248,7 +251,7 @@ func (a *App) initialize() {
 	}
 	legacy := filepath.Join(a.options.Home, ".codex", "ccb-session.json")
 	data, err := readOptional(a.path("session.json"))
-	if err == nil && data == nil {
+	if err == nil && data == nil && !appStoreBuild {
 		data, err = readOptional(legacy)
 		if err == nil && data != nil {
 			err = writeAtomic(a.path("session.json"), data)
@@ -375,7 +378,7 @@ func (a *App) Settings() Settings { a.mu.RLock(); defer a.mu.RUnlock(); return a
 func (a *App) Stop() error {
 	var result error
 	a.stopOnce.Do(func() {
-		log.Print("Kobashi2 stopping")
+		log.Print("ModelBridge stopping")
 		a.cancel()
 		a.local.close()
 		a.models.pause()
@@ -402,7 +405,7 @@ func (a *App) Stop() error {
 		a.actions.Unlock()
 		a.stopError = result
 		a.report(result)
-		log.Printf("Kobashi2 stopped error=%q", diagnosticError(result))
+		log.Printf("ModelBridge stopped error=%q", diagnosticError(result))
 		close(a.closed)
 	})
 	return a.stopError
@@ -467,6 +470,9 @@ func (a *App) disconnectAccounts(accounts []account) error {
 	a.mu.Unlock()
 	a.models.setAccount("")
 	a.local.stopRuntime()
+	if appStoreBuild {
+		return nil
+	}
 	return removeOptional(filepath.Join(a.options.Home, ".codex", "ccb-session.json"))
 }
 func headers(token string) http.Header {
@@ -614,7 +620,7 @@ func (a *App) connectToken(ctx context.Context, token, method string, saveWhileB
 	next := previous
 	next.LocalModel = ""
 	next.Token, next.Username, next.Method = token, str(who["login"]), method
-	if !previous.active() {
+	if !previous.active() && !appStoreBuild {
 		next.Codex, next.Claude = true, true
 	}
 	next.Accounts = upsertAccount(savedAccounts(previous), account{Token: token, Username: next.Username, Method: method})
@@ -623,10 +629,10 @@ func (a *App) connectToken(ctx context.Context, token, method string, saveWhileB
 	}
 	a.setGitHubSession(next, value)
 	if !previous.active() || previous.LocalModel != "" {
-		if err = a.injectCodex(); err != nil {
+		if err = a.injectCodexIfEnabled(next.Codex); err != nil {
 			return nil, err
 		}
-		if err = a.injectClaude(); err != nil {
+		if err = a.injectClaudeIfEnabled(next.Claude); err != nil {
 			return nil, err
 		}
 	}
@@ -668,7 +674,7 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 			s := a.state
 			status := object{"ready": a.ready, "connected": s.active(), "username": s.Username, "authMethod": s.Method, "codexEnabled": s.Codex, "claudeEnabled": s.Claude,
 				"copilotEnabled": s.Copilot, "copilotURL": a.CopilotURL(),
-				"version": a.options.Version, "error": a.lastError, "lastEffort": a.lastEffort, "usage": a.usage, "appearance": a.appearance}
+				"version": a.options.Version, "error": a.lastError, "lastEffort": a.lastEffort, "usage": a.usage, "appearance": a.appearance, "language": a.language}
 			status["accounts"] = publicAccounts(s)
 			status["localModel"] = s.LocalModel
 			// status["remoteURL"] = s.RemoteURL
@@ -709,7 +715,7 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 	a.actions.Lock()
 	defer a.actions.Unlock()
 	if a.ctx.Err() != nil {
-		respond(w, 503, object{"error": "Kobashi2 is shutting down"})
+		respond(w, 503, object{"error": "ModelBridge is shutting down"})
 		return
 	}
 	var result any = object{"ok": true}
@@ -770,6 +776,12 @@ func (a *App) control(w http.ResponseWriter, r *http.Request) {
 				err = a.connectRemote(r.Context(), str(body["url"]), str(body["token"]))
 			}
 	*/
+	case "/api/language":
+		var value object
+		value, err = readObject(r.Body, 4096)
+		if err == nil {
+			result, err = a.saveLanguage(str(value["language"]))
+		}
 	case "/api/appearance":
 		var value object
 		value, err = readObject(r.Body, 4096)

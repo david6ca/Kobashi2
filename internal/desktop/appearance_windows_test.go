@@ -111,8 +111,8 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, c := range w.controls {
-		if c.id == 1 && c.title != "Kobashi2" {
-			t.Fatal("native branding must use Kobashi2", c.id, c.title)
+		if c.id == 1 && c.title != "ModelBridge" {
+			t.Fatal("native branding must use ModelBridge", c.id, c.title)
 		}
 	}
 	t.Run("appearance choices and automatic mode", func(t *testing.T) {
@@ -310,7 +310,7 @@ func TestNativeAppearanceMatchesExistingInterface(t *testing.T) {
 		if strings.ReplaceAll(c.title, "&", "") == "Copy Copilot setup" {
 			t.Fatal("Copilot setup copy action is still present")
 		}
-		if strings.ReplaceAll(c.title, "&", "") == "Quit Kobashi2" {
+		if strings.ReplaceAll(c.title, "&", "") == "Quit ModelBridge" {
 			t.Fatal("Settings quit link is still present")
 		}
 	}

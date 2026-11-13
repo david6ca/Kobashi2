@@ -89,6 +89,7 @@ class StartupCheckDelegate: AppDelegate {
         check((Array(24..<72) + Array(356..<374)).allSatisfy { y in
             (24..<376).allSatisfy { x in
                 let pixel = pixels.colorAt(x: Int(CGFloat(x) * scale), y: Int(CGFloat(y) * scale))!
+                if NativeColors.usesGlass { return pixel.alphaComponent < 0.02 }
                 return abs(pixel.redComponent - background.redComponent) < 0.02 &&
                     abs(pixel.greenComponent - background.greenComponent) < 0.02 &&
                     abs(pixel.blueComponent - background.blueComponent) < 0.02
@@ -139,7 +140,7 @@ class StartupCheckDelegate: AppDelegate {
         currentView = "starting"
         startupDeadline = Date.distantPast
         poll(.refused) {
-            check(self.refreshError.contains("Kobashi2's local bridge") && self.notice.isEmpty &&
+            check(self.refreshError.contains("ModelBridge's local bridge") && self.notice.isEmpty &&
                   self.controls["startingText"]?.isHidden == true &&
                   self.controls.filter { !$0.value.isHidden }.map { $0.key } == ["notice"] &&
                   (self.controls["notice"] as? NSTextField)?.stringValue == self.refreshError,
@@ -179,8 +180,8 @@ class StartupCheckDelegate: AppDelegate {
         poll(mode) {
             check(!self.refreshError.isEmpty && StartupProtocol.statusRequests == count + 1,
                   "Port conflicts, authentication failures, and invalid responses are not hidden by startup retries")
-            check(self.window.contentView?.bounds.size == NSSize(width: 400, height: 390) &&
-                  self.controls["codex"]?.frame.minY == 184 && self.controls["project"]?.frame.minY == footerY,
+            check(self.window.contentView?.bounds.size == windowSize &&
+                  self.controls["codex"]?.frame.minY == 109 && self.controls["project"] == nil,
                   "Startup and error states preserve the fixed window and anchored footer")
             self.checkInvalidResponses(Array(modes.dropFirst()))
         }

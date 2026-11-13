@@ -59,18 +59,15 @@ check(subject.statusItem?.button?.title == "" &&
       subject.statusItem?.button?.image?.size == NSSize(width: 22, height: 18),
       "The menu bar uses the connection mark instead of a letter, with system-controlled contrast")
 check(subject.createWindow(), "The native window loads its existing brand artwork")
-check(subject.window.title == "Kobashi2" &&
-      (subject.controls["title"] as? NSTextField)?.stringValue == "Kobashi2" &&
-      subject.statusItem?.button?.toolTip == "Kobashi2" &&
-      subject.statusItem?.button?.accessibilityLabel() == "Kobashi2",
-      "Window, header, and menu-bar accessibility use Kobashi2")
-check(application.mainMenu?.items.first?.submenu?.items.first?.title == "About Kobashi2" &&
-      application.mainMenu?.items.first?.submenu?.items.last?.title == "Quit Kobashi2" &&
-      subject.statusItem?.menu?.items.last?.title == "Quit Kobashi2",
+check(subject.window.title == "ModelBridge" &&
+      subject.controls["title"] == nil &&
+      subject.statusItem?.button?.toolTip == "ModelBridge" &&
+      subject.statusItem?.button?.accessibilityLabel() == "ModelBridge",
+      "Window, header, and menu-bar accessibility use ModelBridge")
+check(application.mainMenu?.items.first?.submenu?.items.first?.title == "About ModelBridge" &&
+      application.mainMenu?.items.first?.submenu?.items.last?.title == "Quit ModelBridge" &&
+      subject.statusItem?.menu?.items.last?.title == "Quit ModelBridge",
       "Application and menu-bar menus use the renamed app")
-let heading = subject.controls["title"] as! NSTextField
-check(("Kobashi2" as NSString).size(withAttributes: [.font: heading.font!]).width <= heading.bounds.width,
-      "The Kobashi2 heading fits without clipping")
 check(subject.controls["startupHelp"] == nil && subject.controls["trayHelp"] == nil &&
       subject.controls["theme"] == nil,
       "Settings descriptions and the header theme toggle are removed")
@@ -79,10 +76,10 @@ check((subject.controls["startingText"] as? NSTextField)?.stringValue == "Starti
       "Startup waits with plain text instead of offering sign-in")
 subject.currentView = "idle"
 subject.render()
-check(subject.window.contentView?.bounds.size == NSSize(width: 400, height: 390),
+check(subject.window.contentView?.bounds.size == windowSize,
       "The compact window has a fixed 400 by 390 content area")
 check(!subject.window.styleMask.contains(.resizable), "The window cannot be resized")
-check(subject.statusItem?.menu?.items.first?.title == "Show Kobashi2",
+check(subject.statusItem?.menu?.items.first?.title == "Show ModelBridge",
       "The menu bar provides a way to restore the window")
 subject.window.performClose(nil)
 check(!subject.window.isVisible, "The red close action hides the window")
@@ -127,8 +124,8 @@ subject.applicationWillTerminate(Notification(name: NSApplication.willTerminateN
 service.waitUntilExit()
 check(!service.isRunning && service.terminationStatus == 0,
       "Explicit application termination closes its own child input gracefully")
-check(subject.controls["token"] is NSSecureTextField,
-      "Token entry uses a native protected text field")
+check(subject.controls["token"] == nil,
+      "Manual token sign-in is absent from the native UI")
 /*
 check(subject.controls["remoteToken"] is NSSecureTextField &&
       subject.controls["serverToken"] is NSSecureTextField,
@@ -162,14 +159,17 @@ check((subject.controls["startup"] as? NSButton)?.state == .off &&
       "Login startup is opt-in and closing to tray is enabled by default")
 check((subject.controls["startup"] as? NSButton)?.accessibilityRole() == .checkBox,
       "Custom styling preserves native checkbox accessibility")
-check(subject.controls["settings"]?.frame == NSRect(x: 336, y: 24, width: 32, height: 32),
-      "Settings is the only header action, aligned to the right padding")
+let closeButton = subject.window.standardWindowButton(.closeButton)!
+let settingsButton = subject.controls["settings"]!
+check(subject.window.toolbarStyle == .unified &&
+      settingsButton.convert(NSPoint(x: settingsButton.bounds.midX, y: settingsButton.bounds.midY), to: nil).y ==
+      closeButton.convert(NSPoint(x: closeButton.bounds.midX, y: closeButton.bounds.midY), to: nil).y,
+      "Settings shares the padded native unified window-control row")
 check(subject.controls["subtitle"] == nil, "The route description is absent")
 check(NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil) != nil,
       "The standard Settings gear is available")
 for (key, title, action) in [
     ("connect", "Not Connected", #selector(AppDelegate.addAccount)),
-    ("login", "Not Connected", #selector(AppDelegate.login)),
     ("disconnect", "Connected", #selector(AppDelegate.disconnect))
 ] {
     check((subject.controls[key] as? NSButton)?.title == title &&
@@ -178,9 +178,9 @@ for (key, title, action) in [
           (subject.controls[key] as? NSButton)?.accessibilityRole() == .button,
           "The \(key) status retains its native accessible name and action")
 }
-check(subject.controls["codex"]?.frame == NSRect(x: 40, y: 184, width: 320, height: 50) &&
-      subject.controls["claude"]?.frame == NSRect(x: 40, y: 234, width: 320, height: 50) &&
-      subject.controls["copilot"]?.frame == NSRect(x: 40, y: 284, width: 320, height: 50),
+check(subject.controls["codex"]?.frame == NSRect(x: 18, y: 109, width: 364, height: 44) &&
+      subject.controls["claude"]?.frame == NSRect(x: 18, y: 153, width: 364, height: 44) &&
+      subject.controls["copilot"]?.frame == NSRect(x: 18, y: 197, width: 364, height: 44),
       "The client rows show Codex, Claude Code, GitHub Copilot in one padded group")
 check(subject.controls["startup"]?.frame == NSRect(x: 32, y: 118, width: 336, height: 30) &&
       subject.controls["tray"]?.frame == NSRect(x: 32, y: 166, width: 336, height: 30) &&
@@ -226,22 +226,8 @@ check(subject.currentView == "starting",
 subject.status.removeValue(forKey: "ready")
 subject.currentView = "idle"
 subject.render()
-if let hint = subject.controls["tokenTeaser"] as? NSTextField,
-   let link = subject.controls["tokenView"] as? NSButton {
-    let font = NSFont.systemFont(ofSize: 12)
-    check(hint.frame.width >= (hint.stringValue as NSString).size(withAttributes: [.font: font]).width + 4 &&
-          link.frame.width >= (link.title as NSString).size(withAttributes: [.font: font]).width + 4,
-          "The token hint and link fit their native font metrics")
-    check(hint.frame.minX >= 32 && hint.frame.maxX + 6 <= link.frame.minX && link.frame.maxX <= 368,
-          "The single-line token prompt stays separated within the content padding")
-} else {
-    check(false, "The token prompt retains native label and button controls")
-}
-subject.tokenView()
-check(subject.controls["connect"]?.isHidden == false && subject.controls["token"]?.isHidden == false,
-      "Token entry expands within the original sign-in screen")
-check((subject.controls["login"] as? NSButton)?.isEnabled == false,
-      "Connect remains disabled for an empty token")
+check(subject.controls["token"] == nil && subject.controls["tokenView"] == nil && subject.controls["login"] == nil,
+      "Access-token sign-in is absent from the native UI")
 subject.currentView = "connected"
 subject.status = ["connected": true, "username": "example", "claudeEnabled": true, "codexEnabled": false,
                   "copilotEnabled": true, "copilotURL": "http://127.0.0.1:18925/v1", "version": "2.1.7"]
@@ -293,7 +279,7 @@ for appearance in ["light", "dark"] {
         check(contrast(foreground, background) >= 4.5,
               "The \(appearance) theme preserves at least 4.5:1 text contrast")
     }
-    for key in ["connect", "login", "disconnect"] {
+    for key in ["connect"] {
         subject.currentView = key == "disconnect" ? "connected" : key == "login" ? "token" : "idle"
         subject.render()
         let button = subject.controls[key] as! NativeButton
@@ -319,51 +305,28 @@ for appearance in ["light", "dark"] {
     let top = subject.window.frame.maxY
     for _ in 0..<3 {
         subject.render()
-        check(subject.window.contentView?.bounds.size == NSSize(width: 400, height: 390) &&
-              subject.controls["account"]?.frame.minY == 92 &&
-              subject.controls["codex"]?.frame.minY == 184 &&
-              subject.controls["project"]?.frame.minY == 356 &&
+        check(subject.window.contentView?.bounds.size == windowSize &&
+              subject.controls["account"]?.frame.minY == 8 &&
+              subject.controls["codex"]?.frame.minY == 109 &&
+              subject.controls["project"] == nil &&
               subject.controls["notice"]?.isHidden == true,
               "The \(appearance) homepage keeps its compact fixed layout")
     }
-    let panelTop = subject.controls["codex"]!.frame.minY - 6
-    let panelBottom = subject.controls["copilot"]!.frame.maxY + 6
-    check(72 - subject.controls["settings"]!.frame.maxY == 16 &&
-          panelTop - 162 == 16 && subject.controls["project"]!.frame.minY - panelBottom == 16 &&
-          subject.controls["claude"]!.frame.minY == subject.controls["codex"]!.frame.maxY &&
-          subject.controls["copilot"]!.frame.minY == subject.controls["claude"]!.frame.maxY,
-          "The header, account, client panel, and version have equal 16-point gaps")
-    let content = subject.window.contentView!
-    let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds)!
-    content.cacheDisplay(in: content.bounds, to: bitmap)
-    let pixels = bitmap.converting(to: .sRGB, renderingIntent: .relativeColorimetric)!
-    let scale = CGFloat(pixels.pixelsWide) / content.bounds.width
-    func matches(_ x: Int, _ y: Int, _ color: NSColor) -> Bool {
-        let actual = pixels.colorAt(x: Int(CGFloat(x) * scale), y: Int(CGFloat(y) * scale))!
-        let expected = color.usingColorSpace(.sRGB)!
-        return abs(actual.redComponent - expected.redComponent) < 0.02 &&
-            abs(actual.greenComponent - expected.greenComponent) < 0.02 &&
-            abs(actual.blueComponent - expected.blueComponent) < 0.02
-    }
-    check([38, 44, 50].allSatisfy { matches($0, 38, .white) } &&
-          [38, 50].allSatisfy { matches($0, 35, .white) } &&
-          !matches(48, 29, colors.background),
-          "The \(appearance) header renders white circles and connector on the Pomegram gradient")
-    check((56..<72).allSatisfy { matches(200, $0, colors.background) } &&
-          (162..<178).allSatisfy { matches(200, $0, colors.background) } &&
-          (340..<356).allSatisfy { matches(200, $0, colors.background) },
-          "The \(appearance) rendered header, panel, and footer gaps are all exactly 16 points")
+    check(subject.controls["codex"]!.frame.minY > mainGlassY &&
+          subject.controls["claude"]!.frame.minY - subject.controls["codex"]!.frame.minY == 44 &&
+          subject.controls["copilot"]!.frame.minY - subject.controls["claude"]!.frame.minY == 44,
+          "Three aligned client rows have equal spacing in the glass area")
     let frames = subject.controls.mapValues { $0.frame }
     for source in ["notice", "error"] {
         if source == "notice" { subject.notice = "Could not save settings." }
         else { subject.status["error"] = "GitHub needs authorization." }
         subject.render()
-        check(subject.window.contentView?.bounds.size == NSSize(width: 400, height: 390) &&
+        check(subject.window.contentView?.bounds.size == windowSize &&
               subject.controls["notice"]?.isHidden == false &&
-              subject.controls["notice"]!.frame == NSRect(x: 32, y: 24, width: 248, height: 32) &&
-              subject.controls["title"]?.isHidden == true &&
-              subject.controls["notice"]!.frame.maxX < subject.controls["settings"]!.frame.minX &&
-              ["account", "claude", "codex", "copilot", "project"].allSatisfy {
+              subject.controls["notice"]!.frame == NSRect(x: 20, y: 56, width: 360, height: 42) &&
+              subject.controls["title"] == nil &&
+              subject.controls["notice"]!.frame.minY >= subject.controls["disconnect"]!.frame.maxY &&
+              ["account", "claude", "codex", "copilot", "settings"].allSatisfy {
                   subject.controls[$0]!.frame == frames[$0]
               },
               "The \(appearance) \(source) uses the header without moving cards or covering header actions")
@@ -377,7 +340,7 @@ for appearance in ["light", "dark"] {
     subject.busy = true
     subject.pendingBridge = "codex"
     subject.render()
-    check(subject.window.contentView?.bounds.size == NSSize(width: 400, height: 390) &&
+    check(subject.window.contentView?.bounds.size == windowSize &&
           (subject.controls["codex"] as? NativeButton)?.bridgeStatusText == "Working..." &&
           subject.controls["notice"]?.isHidden == true,
           "The \(appearance) pending state replaces the row status without a layout shift")
@@ -400,73 +363,25 @@ for appearance in ["light", "dark"] {
     let mainFrame = subject.window.frame
     for _ in 0..<3 {
         subject.settingsView()
-        check(subject.window.frame == mainFrame && subject.controls["project"]?.frame.minY == 356,
+        check(subject.window.frame == mainFrame && subject.controls["project"] == nil,
               "Settings keeps the exact main window size, position, and footer")
         subject.done()
         check(subject.window.frame == mainFrame,
               "Returning from Settings does not resize or move the main window")
     }
     subject.settingsView()
-    check(subject.controls["quit"] == nil &&
-          subject.controls["project"]!.frame.minY - subject.controls["done"]!.frame.maxY == 16,
-          "Settings has no quit link and preserves the same footer spacing")
-    subject.window.recalculateKeyViewLoop()
-    subject.window.makeFirstResponder(subject.controls["done"])
-    subject.window.selectNextKeyView(nil)
-    check(subject.window.firstResponder === subject.controls["project"],
-          "Tab reaches Version, not \((subject.window.firstResponder as? NativeButton)?.key ?? String(describing: subject.window.firstResponder))")
-    check((subject.controls["project"] as? NativeButton)?.showsKeyboardFocus == true,
-          "Tab reaches Version with a visible keyboard focus indicator")
-    subject.window.selectPreviousKeyView(nil)
-    check(subject.window.firstResponder === subject.controls["done"] &&
-          (subject.controls["done"] as? NativeButton)?.showsKeyboardFocus == true,
-          "Shift-Tab returns to Done with a visible keyboard focus indicator")
-    subject.window.makeFirstResponder(subject.controls["tray"])
-    subject.window.selectNextKeyView(nil)
-    check(subject.window.firstResponder === appearanceSelector,
-          "Tab reaches the native Appearance selector after Close to system tray")
-    subject.window.selectNextKeyView(nil)
-    check(subject.window.firstResponder === subject.controls["done"],
-          "Tab continues from Appearance to Done")
-    subject.window.selectPreviousKeyView(nil)
-    check(subject.window.firstResponder === appearanceSelector,
-          "Shift-Tab returns from Done to Appearance")
-    check(!appearanceSelector.isHidden && appearanceSelector.selectedItem?.title == appearance.capitalized &&
-          !appearanceSelector.frame.intersects(subject.controls["appearanceLabel"]!.frame),
-          "The \(appearance) Settings selector reflects the confirmed mode without overlapping its label")
-    for key in ["startup", "tray"] {
-        let button = subject.controls[key] as! NativeButton
-        check(!button.frame.intersects(appearanceSelector.frame) &&
-              !button.frame.intersects(subject.controls["appearanceLabel"]!.frame),
-              "The \(key) checkbox cannot overlap Appearance")
-        button.showsKeyboardFocus = false
-        subject.window.makeFirstResponder(button)
-        button.display()
-        check(!button.showsKeyboardFocus, "Direct selection of \(key) adds no thick row border")
-        if button.state == .on {
-            let checkbox = button.bitmapImageRepForCachingDisplay(in: button.bounds)!
-            button.cacheDisplay(in: button.bounds, to: checkbox)
-            let srgb = checkbox.converting(to: .sRGB, renderingIntent: .relativeColorimetric)!
-            let scale = CGFloat(checkbox.pixelsWide) / button.bounds.width
-            let sample = srgb.colorAt(x: Int(312 * scale), y: Int(10 * scale))!
-            let fill = NSColor(srgbRed: sample.redComponent, green: sample.greenComponent,
-                               blue: sample.blueComponent, alpha: 1)
-            check(contrast(.white, fill) >= 4.5,
-                  "The \(appearance) checked box keeps its white tick legible")
-        }
-    }
+    check(subject.controls["quit"] == nil && subject.controls["project"] == nil,
+          "Settings has no quit link or product version")
     captureWindow(subject.window, "\(appearance)-settings")
-    for view in ["idle", "token", "device", "settings"] {
+    for view in ["idle", "device", "settings"] {
         for error in ["", "Could not complete this action. Try again."] {
             subject.currentView = view
             subject.notice = error
             subject.render()
             let content = subject.window.contentView!
-            let footer = subject.controls["project"]!.frame
             check(content.subviews.filter { !$0.isHidden }.allSatisfy {
-                content.bounds.contains($0.frame) &&
-                    ($0 === subject.controls["project"] || !$0.frame.intersects(footer))
-            }, "The \(appearance) \(view) controls and errors fit above the anchored version footer")
+                content.bounds.contains($0.frame)
+            }, "The \(appearance) \(view) controls and errors fit without clipping")
         }
     }
     subject.notice = ""
@@ -476,8 +391,6 @@ for appearance in ["light", "dark"] {
 subject.status["username"] = "xjin6"
 subject.status["version"] = "2.1.6"
 subject.render()
-check((subject.controls["project"] as? NSButton)?.title == "v2.1.6" &&
-      (subject.controls["project"] as? NSButton)?.accessibilityRole() == .button,
-      "The version link retains a native accessible name without author attribution")
+check(subject.controls["project"] == nil, "Status updates do not restore a version label")
 check((subject.controls["account"] as? NSTextField)?.stringValue == "@xjin6",
       "Removing author attribution preserves the signed-in username")

@@ -75,7 +75,22 @@ func (a *App) migrateCodexEnvironment() error {
 	}
 	return nil
 }
+func (a *App) injectCodexIfEnabled(enabled bool) error {
+	if appStoreBuild && !enabled {
+		return nil
+	}
+	return a.injectCodex()
+}
+func (a *App) injectClaudeIfEnabled(enabled bool) error {
+	if appStoreBuild && !enabled {
+		return nil
+	}
+	return a.injectClaude()
+}
 func (a *App) injectCodex() error {
+	if err := acquireClientAccess(a.options.Home, "codex"); err != nil {
+		return err
+	}
 	state := a.snapshot()
 	if !state.Codex || !state.active() {
 		return nil
@@ -211,6 +226,9 @@ func readSettingsObject(path string) (object, []byte, error) {
 	return v, b, nil
 }
 func (a *App) injectClaude() error {
+	if err := acquireClientAccess(a.options.Home, "claude"); err != nil {
+		return err
+	}
 	path := filepath.Join(a.options.Home, ".claude", "settings.json")
 	live, source, err := readSettingsObject(path)
 	if err != nil {

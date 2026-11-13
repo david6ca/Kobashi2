@@ -10,7 +10,7 @@ class AccountCheckDelegate: AppDelegate {
     var requests: [(String, [String: Any])] = []
     var popupOpenedAt: TimeInterval?
     var fixture: [String: Any] = [
-        "ready": true, "connected": true, "username": "first",
+        "ready": true, "connected": true, "username": "first", "language": "en",
         "codexEnabled": false, "claudeEnabled": true, "copilotEnabled": true,
         "accounts": [["username": "first", "selected": true], ["username": "second", "selected": false]]
     ]
@@ -30,6 +30,7 @@ class AccountCheckDelegate: AppDelegate {
         switch path {
         case "/api/status": result = fixture
         case "/api/settings": result = ["closeToTray": true]
+        case "/api/start": result = ["user_code": "ABCD-EFGH", "device_code": "mock-device", "verification_uri": "https://github.com/login/device"]
         case "/api/local/models": result = ["supported": true, "recommended": "qwen3-8b", "models": [
             ["id": "qwen3-4b", "name": "Qwen3 4B", "bytes": 2500000000, "available": true],
             ["id": "qwen3-8b", "name": "Qwen3 8B", "bytes": 5000000000, "recommended": true, "available": true],
@@ -72,7 +73,7 @@ class AccountCheckDelegate: AppDelegate {
     }
     func rows() -> [AccountRow] {
         guard let content = accountPopover?.contentViewController?.view,
-              let scroll = content.subviews.first as? NSScrollView else {
+              let scroll = content.subviews.compactMap({ $0 as? NSScrollView }).first else {
             check(false, "The account list is in a native scroll view")
             return []
         }
@@ -82,22 +83,30 @@ class AccountCheckDelegate: AppDelegate {
         busy = true
         pendingBridge = "codex"
         render()
-        let main = controls["disconnect"]!
+        check((controls["codex"] as! NSButton).accessibilityValue() as? Int == 0 &&
+              (controls["claude"] as! NSButton).accessibilityValue() as? Int == 1,
+              "Client checkboxes retain their native accessible on/off values")
         let arrow = controls["accounts"]!
-        check(main.frame.maxX == arrow.frame.minX && arrow.frame.width == 28 &&
-              arrow.frame.maxX == 349, "Connected has adjacent primary and dropdown hit targets")
-        check(window.contentView?.bounds.size == windowSize &&
-              controls["codex"]?.frame.minY == 184 && controls["project"]?.frame.minY == footerY,
-              "The split button keeps the cards and footer fixed")
-        let location = arrow.convert(NSPoint(x: 14, y: 14), to: nil)
-        check(window.contentView?.hitTest(location) === arrow, "The arrow receives its own mouse clicks")
+        check(arrow.frame.maxX == 380 && controls["disconnect"] == nil,
+              "Connected and its arrow are one menu trigger")
+        check(window.contentView?.bounds.size == homeWindowSize &&
+              controls["codex"]?.frame.minY == 109 && controls["project"] == nil,
+              "Opening account choices does not resize or shift the main screen")
+        let location = arrow.convert(NSPoint(x: arrow.bounds.width - 14, y: 14), to: nil)
+        let textLocation = arrow.convert(NSPoint(x: 12, y: 14), to: nil)
+        check(window.contentView?.hitTest(location) === arrow && window.contentView?.hitTest(textLocation) === arrow,
+              "Both the label and arrow receive clicks through the same menu trigger")
         let started = ProcessInfo.processInfo.systemUptime
-        for (type, delta) in [(NSEvent.EventType.leftMouseDown, 0.0), (.leftMouseUp, 0.01)] {
-            let event = NSEvent.mouseEvent(with: type, location: location, modifierFlags: [],
-                                          timestamp: started + delta, windowNumber: window.windowNumber,
-                                          context: nil, eventNumber: 1, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0)!
-            NSApp.postEvent(event, atStart: false)
-        }
+        let down = NSEvent.mouseEvent(with: .leftMouseDown, location: location, modifierFlags: [],
+                                      timestamp: started, windowNumber: window.windowNumber,
+                                      context: nil, eventNumber: 1, clickCount: 1, pressure: 1)!
+        let up = NSEvent.mouseEvent(with: .leftMouseUp, location: location, modifierFlags: [],
+                                    timestamp: started + 0.01, windowNumber: window.windowNumber,
+                                    context: nil, eventNumber: 1, clickCount: 1, pressure: 0)!
+        // Route only this test window's mouse event; foreground-app changes
+        // must not redirect the click to another app's window.
+        NSApp.postEvent(up, atStart: false)
+        window.sendEvent(down)
         later {
             check(self.popupOpenedAt != nil && self.popupOpenedAt! - started < 0.2 && self.requests.isEmpty,
                   "A real arrow click opens the menu within 200 ms even while a bridge action is pending (elapsed: \((self.popupOpenedAt ?? started) - started)s)")
@@ -105,8 +114,8 @@ class AccountCheckDelegate: AppDelegate {
             check(rows.count == 2 && rows[0].selected && !rows[1].selected,
                   "The dropdown includes the selected account and other saved accounts")
             check(rows[0].choose.accessibilityValue() as? String == "Selected" &&
-                  rows[1].remove.accessibilityLabel() == "Remove @second",
-                  "Selection and removal have accessible names and values")
+                  rows[1].remove.accessibilityLabel() == L("Remove account") + ": @second",
+                  "Selection and removal have accessible names and values (selected: \(String(describing: rows[0].choose.accessibilityValue())), remove: \(String(describing: rows[1].remove.accessibilityLabel())))")
             check(rows[0].choose.frame.maxX == rows[0].remove.frame.minX &&
                   rows[0].remove.frame.width >= 24,
                   "Switch and remove have separate non-overlapping hit targets")
@@ -116,7 +125,8 @@ class AccountCheckDelegate: AppDelegate {
             check(!rows[0].choose.isEnabled && !rows[0].remove.isEnabled && !add.isEnabled,
                   "Pending bridge work permits browsing but keeps account mutations disabled")
             self.accountAction("/api/accounts/delete", "first")
-            self.addAccount()
+            self.addGitHubAccount()
+            self.addLocalAccount()
             check(self.requests.isEmpty && !self.addingAccount && self.accountPopover?.isShown == true,
                   "Busy account actions cannot switch, delete, or leave the current operation")
             self.busy = false
@@ -124,8 +134,10 @@ class AccountCheckDelegate: AppDelegate {
             self.render()
             check(rows[0].choose.isEnabled && rows[0].remove.isEnabled && add.isEnabled,
                   "The open account list becomes actionable as soon as bridge work finishes")
-            check(add.title == "Add account" && divider.frame.maxY < add.frame.minY,
-                  "Add account is last with a divider above it")
+            let addLocal = content.subviews.compactMap { $0 as? NativeButton }.last!
+            check(add.title == "Add GitHub account" && addLocal.title == "Add a local model" &&
+                  divider.frame.maxY < add.frame.minY && add.frame.maxY < addLocal.frame.minY,
+                  "GitHub and local model setup have distinct menu entries")
             content.window?.makeFirstResponder(add)
             check(!rows[1].highlighted, "The remove glyph is hidden on an idle row")
             rows[1].mouseEntered(with: NSEvent())
@@ -156,7 +168,7 @@ class AccountCheckDelegate: AppDelegate {
                 self.showAccounts()
                 self.later {
                     let content = self.accountPopover!.contentViewController!.view
-                    content.subviews.compactMap { $0 as? NSButton }.first!.performClick(nil)
+                    content.subviews.compactMap { $0 as? NSButton }.last!.performClick(nil)
                     self.refresh()
                     self.later {
                         check(self.addingAccount && self.currentView == "add-account" &&
@@ -166,7 +178,7 @@ class AccountCheckDelegate: AppDelegate {
                         check(self.selectedLocalModel == "qwen3-8b" && picker.selectedItem?.title == "Qwen3 8B · Recommended" &&
                               !picker.itemArray[0].title.contains("Recommended"),
                               "Add account selects the recommended local model automatically")
-                        check(picker.itemArray.count == 3 && picker.itemArray[2].isEnabled && self.controls["addGitHub"]?.isHidden == false,
+                        check(picker.itemArray.count == 3 && picker.itemArray[2].isEnabled && self.controls["token"] == nil,
                               "A compatible coding model stays selectable under temporary memory pressure")
                         picker.selectItem(at: 2)
                         self.selectLocalModel(picker)
@@ -230,20 +242,19 @@ class AccountCheckDelegate: AppDelegate {
     }
     func checkCancelAndContinue() {
                         check(requests.last!.0 == "/api/local/cancel" && !localSetupPending, "Cancel stops the pending setup")
-                        self.tokenView()
-                        (self.controls["token"] as! NSTextField).stringValue = "temporary-input"
+                        self.addGitHubAccount()
                         self.cancelAddAccount()
                         check(self.currentView == "connected" && !self.addingAccount &&
-                              (self.controls["token"] as! NSTextField).stringValue.isEmpty &&
+                              self.deviceCode.isEmpty && self.controls["token"] == nil &&
                               self.window.firstResponder === self.controls["accounts"],
-                              "Cancel clears token input and returns focus to the split button")
+                              "Cancel clears device authorization and returns focus to its account menu")
                         self.checkLongList()
     }
     func checkLongList() {
         status["accounts"] = (0..<12).map { ["username": "account-\($0)", "selected": $0 == 0] as [String: Any] }
         showAccounts()
         later {
-            check(self.accountPopover!.contentSize.height == 265 && self.rows().count == 12,
+            check(self.accountPopover!.contentSize.height == 301 && self.rows().count == 12,
                   "Long account lists scroll without resizing the app or losing accounts")
             let rows = self.rows()
             rows[10].moveFocus(1)
@@ -268,8 +279,22 @@ class AccountCheckDelegate: AppDelegate {
                         check(self.currentView == "idle" && self.status["connected"] as? Bool == false &&
                               self.window.firstResponder === self.controls["connect"],
                               "Deleting the last account displays sign-in and restores usable keyboard focus")
-                        print("PASS: Account-switcher interactions complete without accessing real credentials or bridge ports")
-                        exit(0)
+                        let count = self.requests.count
+                        self.addAccount()
+                        self.later {
+                            let buttons = self.accountPopover!.contentViewController!.view.subviews.compactMap { $0 as? NativeButton }
+                            check(buttons.map(\.title) == ["Add GitHub account", "Add a local model"] && self.requests.count == count,
+                                  "The signed-out entry opens the same two choices without starting auth")
+                            buttons[0].performClick(nil)
+                            check(self.currentView == "device" && self.requests.count == count + 1 &&
+                                  self.controls["localModel"]!.isHidden && self.controls["token"] == nil,
+                                  "The GitHub choice has a separate page and does not discover local models")
+                            self.cancelAddAccount()
+                            check(self.currentView == "idle" && self.window.firstResponder === self.controls["connect"],
+                                  "Cancelling GitHub setup restores the signed-out entry")
+                            print("PASS: Account-switcher interactions complete without accessing real credentials or bridge ports")
+                            exit(0)
+                        }
                     }
                 }
             }

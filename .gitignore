@@ -6,3 +6,11 @@ ScreenShot_2026-05-31_035853_687.png
 # Local design/review scratch
 preview-*.html
 .claude/launch.json
+
+# App Store preparation caches
+__pycache__/
+*.xcuserstate
+xcuserdata/
+
+# Cloudflare local cache
+.wrangler/

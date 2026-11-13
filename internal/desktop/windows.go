@@ -20,6 +20,7 @@ import (
 
 	"github.com/david6ca/Kobashi2/assets"
 	"github.com/david6ca/Kobashi2/internal/bridge"
+	"github.com/david6ca/Kobashi2/internal/localization"
 )
 
 var user = syscall.NewLazyDLL("user32.dll")
@@ -73,6 +74,10 @@ const (
 	idAccounts
 	idAddAccount
 	idCancelAccount
+	idLanguageLabel
+	idLanguage
+	idPrivacy
+	idSettingsBack
 )
 
 type point struct{ X, Y int32 }
@@ -128,6 +133,7 @@ type event struct {
 	err      error
 }
 type Window struct {
+	renderedLanguage                                                                           string
 	app                                                                                        *bridge.App
 	Handle                                                                                     uintptr
 	controls                                                                                   []control
@@ -167,7 +173,7 @@ func proc(name string, args ...uintptr) uintptr {
 func wide(value string) *uint16 { p, _ := syscall.UTF16PtrFromString(value); return p }
 
 func ShowError(message string) {
-	proc("MessageBoxW", 0, uintptr(unsafe.Pointer(wide(message))), uintptr(unsafe.Pointer(wide("Kobashi2"))), 0x10)
+	proc("MessageBoxW", 0, uintptr(unsafe.Pointer(wide(message))), uintptr(unsafe.Pointer(wide("ModelBridge"))), 0x10)
 }
 func FocusExisting() bool {
 	h := proc("FindWindowW", uintptr(unsafe.Pointer(wide("KobashiNativeWindow"))), 0)
@@ -231,7 +237,7 @@ func (w *Window) build() error {
 		id, x, y, width, height int
 		style                   uintptr
 	}{
-		{"STATIC", "Kobashi2", "all", 1, 28, 24, 170, 28, 0},
+		{"STATIC", "ModelBridge", "all", 1, 28, 24, 254, 28, 0},
 		{"STATIC", "Starting...", "starting", 13, 40, 183, 320, 24, 1},
 		{"BUTTON", "Se&ttings", "all", idSettings, 336, 24, 32, 32, 0x10000},
 		{"BUTTON", "Not &Connected", "sign-in", idConnect, 95, 160, 210, 42, 0x10000 | 1},
@@ -252,14 +258,18 @@ func (w *Window) build() error {
 		{"BUTTON", "&Codex", "connected", idCodex, 40, 184, 320, 44, 0x10000 | 3},
 		{"BUTTON", "C&laude Code", "connected", idClaude, 40, 228, 320, 44, 0x10000 | 3},
 		{"BUTTON", "GitHub Cop&ilot", "connected", idCopilot, 40, 272, 320, 44, 0x10000 | 3},
-		{"STATIC", "Settings", "settings", 9, 32, 70, 260, 32, 0},
-		{"BUTTON", "&Start at login", "settings", idStartup, 32, 114, 336, 30, 0x10000 | 3},
-		{"BUTTON", "&Close to system tray", "settings", idTray, 32, 162, 336, 30, 0x10000 | 3},
-		{"STATIC", "&Appearance", "settings", idAppearanceLabel, 40, 214, 132, 24, 0},
-		{"COMBOBOX", "", "settings", idAppearance, 188, 210, 172, 30, 0x10000 | 0x200000 | 3},
+		{"BUTTON", "Back", "settings", idSettingsBack, 28, 22, 32, 32, 0x10000},
+		{"STATIC", "Settings", "settings", 9, 62, 26, 274, 26, 0},
+		{"BUTTON", "&Start at login", "settings", idStartup, 32, 106, 336, 30, 0x10000 | 3},
+		{"BUTTON", "&Close to system tray", "settings", idTray, 32, 144, 336, 30, 0x10000 | 3},
+		{"STATIC", "&Appearance", "settings", idAppearanceLabel, 40, 186, 132, 24, 0},
+		{"COMBOBOX", "", "settings", idAppearance, 188, 182, 172, 30, 0x10000 | 0x200000 | 3},
+		{"STATIC", "&Language", "settings", idLanguageLabel, 40, 226, 132, 24, 0},
+		{"COMBOBOX", "", "settings", idLanguage, 188, 222, 172, 30, 0x10000 | 0x200000 | 3},
+		{"BUTTON", "Privacy Statement", "settings", idPrivacy, 32, 262, 336, 28, 0x10000},
 		/*
 			{"BUTTON", "Connect to &Server", "settings", idClientView, 32, 294, 164, 28, 0x10000},
-			{"BUTTON", "Share this &Kobashi2", "settings", idServerView, 204, 294, 164, 28, 0x10000},
+			{"BUTTON", "Share this &ModelBridge", "settings", idServerView, 204, 294, 164, 28, 0x10000},
 			{"STATIC", "Connect to Server", "client", 20, 32, 70, 336, 28, 0},
 			{"STATIC", "Server URL", "client", 21, 32, 112, 336, 20, 0},
 			{"EDIT", "", "client", idRemoteURL, 32, 136, 336, 26, 0x10000 | 0x80 | 0x800000},
@@ -267,7 +277,7 @@ func (w *Window) build() error {
 			{"EDIT", "", "client", idRemoteToken, 32, 196, 336, 26, 0x10000 | 0x80 | 0x20 | 0x800000},
 			{"BUTTON", "&Find Servers", "client", idDiscover, 32, 238, 164, 32, 0x10000},
 			{"BUTTON", "&Connect", "client", idRemoteConnect, 204, 238, 164, 32, 0x10000},
-			{"STATIC", "Share this Kobashi2", "server", 23, 32, 70, 336, 28, 0},
+			{"STATIC", "Share this ModelBridge", "server", 23, 32, 70, 336, 28, 0},
 			{"STATIC", "Listen IP:port", "server", 24, 32, 112, 336, 20, 0},
 			{"EDIT", "", "server", idListen, 32, 136, 336, 26, 0x10000 | 0x80 | 0x800000},
 			{"STATIC", "Access token (blank keeps or generates one)", "server", 25, 32, 172, 336, 20, 0},
@@ -277,7 +287,7 @@ func (w *Window) build() error {
 			{"BUTTON", "&Back", "network", idNetworkDone, 32, 328, 336, 32, 0x10000},
 		*/
 		{"STATIC", "", "all", 12, 32, 252, 336, 70, 0},
-		{"BUTTON", "&Done", "settings", idDone, 32, 290, 336, 32, 0x10000},
+		{"BUTTON", "&Done", "settings", idDone, 32, 300, 336, 32, 0x10000},
 		{"BUTTON", "Version", "all", idProject, 252, footerY, 116, 24, 0x10000},
 	}
 	for _, item := range items {
@@ -357,7 +367,7 @@ func appIcon() uintptr {
 func (w *Window) addTray() error {
 	n := notifyIcon{HWnd: w.Handle, ID: 1, Flags: 7, Message: trayMessage, Icon: w.icon}
 	n.Size = uint32(unsafe.Sizeof(n))
-	copy(n.Tip[:], syscall.StringToUTF16("Kobashi2"))
+	copy(n.Tip[:], syscall.StringToUTF16("ModelBridge"))
 	ok, _, err := shell.NewProc("Shell_NotifyIconW").Call(0, uintptr(unsafe.Pointer(&n)))
 	w.tray = ok != 0
 	if !w.tray {
@@ -416,7 +426,7 @@ func (w *Window) post(path string, value map[string]any) {
 	w.busy = true
 	w.pendingBridge = map[string]int{"/api/toggle-codex": idCodex, "/api/toggle-claude": idClaude, "/api/toggle-copilot": idCopilot}[path]
 	w.notice = ""
-	if w.pendingBridge == 0 && path != "/api/settings" && path != "/api/appearance" {
+	if w.pendingBridge == 0 && path != "/api/settings" && path != "/api/appearance" && path != "/api/language" {
 		w.notice = "Working..."
 	}
 	w.render()
@@ -442,6 +452,7 @@ func (w *Window) refresh() {
 	}()
 }
 func (w *Window) render() {
+	w.localize()
 	w.layout()
 	var client rect
 	proc("GetClientRect", w.Handle, uintptr(unsafe.Pointer(&client)))
@@ -454,6 +465,9 @@ func (w *Window) render() {
 			continue
 		}
 		show := c.view == "all" || c.view == w.view || (c.view == "sign-in" && (w.view == "idle" || w.view == "token"))
+		if (c.id == 1 || c.id == idSettings) && w.view == "settings" {
+			show = false
+		}
 		if c.id == idAccounts {
 			accounts, _ := w.status["accounts"].([]any)
 			show = w.view == "connected" || ((w.view == "idle" || w.view == "token") && !w.addingAccount && len(accounts) > 0)
@@ -501,7 +515,7 @@ func (w *Window) render() {
 		}
 	}
 	w.updateAccountControls()
-	w.setText(idConnect, "Not &Connected")
+	w.setText(idConnect, w.title("Not &Connected"))
 	check := func(id int, value any) {
 		n := uintptr(0)
 		if value == true {
@@ -524,6 +538,15 @@ func (w *Window) render() {
 	if proc("SendMessageW", w.control(idAppearance), 0x157, 0, 0) == 0 {
 		proc("SendMessageW", w.control(idAppearance), 0x14e, appearance, 0)
 	}
+	languageIndex := uintptr(0)
+	for i, language := range localization.Languages() {
+		if language.Code == text(w.status["language"]) {
+			languageIndex = uintptr(i + 1)
+		}
+	}
+	if proc("SendMessageW", w.control(idLanguage), 0x157, 0, 0) == 0 {
+		proc("SendMessageW", w.control(idLanguage), 0x14e, languageIndex, 0)
+	}
 	w.setText(6, w.code)
 	account := "@" + text(w.status["username"])
 	/*
@@ -541,7 +564,7 @@ func (w *Window) render() {
 		w.setText(idServerToggle, serverAction)
 	*/
 	if used, total, ok := w.usage(); ok {
-		w.setText(8, "AI credits this cycle     "+credits(used)+" / "+credits(total))
+		w.setText(8, w.tr("AI credits this cycle")+"     "+w.credits(used)+" / "+w.credits(total))
 	}
 	if w.verification != "" {
 		w.setText(idBrowser, w.verification)
@@ -567,7 +590,7 @@ func (w *Window) render() {
 	} else if notice == "" && w.view == "device" {
 		notice = "Waiting for authorization..."
 	}
-	w.setText(12, notice)
+	w.setText(12, w.tr(notice))
 	w.setText(idProject, "v"+text(w.status["version"]))
 	w.applyTheme()
 	proc("RedrawWindow", w.Handle, 0, 0, 0x85)
@@ -661,6 +684,8 @@ func (w *Window) accept(e event) {
 				w.notice = "Sign-in failed."
 			}
 		}
+	case "/api/language":
+		w.status["language"] = e.value["language"]
 	case "/api/settings":
 		w.settings = e.value
 	case "/api/toggle-codex", "/api/toggle-claude", "/api/toggle-copilot":
@@ -777,6 +802,8 @@ func (w *Window) command(id int) {
 		if token := w.tokenValue(); token != "" && !w.busy {
 			w.post("/api/token-login", map[string]any{"token": token})
 		}
+	case idSettingsBack:
+		w.command(idDone)
 	case idDone:
 		if w.addingAccount {
 			w.command(idCancelAccount)
@@ -866,6 +893,19 @@ func (w *Window) command(id int) {
 		if index < uintptr(len(modes)) && modes[index] != text(w.status["appearance"]) {
 			w.post("/api/appearance", map[string]any{"appearance": modes[index]})
 		}
+	case idLanguage:
+		index := proc("SendMessageW", w.control(idLanguage), 0x147, 0, 0)
+		if index <= 13 {
+			selection := "auto"
+			if index > 0 {
+				selection = localization.Languages()[index-1].Code
+			}
+			if selection != text(w.status["language"]) {
+				w.post("/api/language", map[string]any{"language": selection})
+			}
+		}
+	case idPrivacy:
+		w.showPrivacy()
 	case idProject:
 		if err := OpenURL("https://github.com/david6ca/Kobashi2"); err != nil {
 			w.notice = err.Error()
@@ -963,8 +1003,8 @@ func (w *Window) fixedSize(x, y int) {
 func (w *Window) trayMenu() {
 	menu := proc("CreatePopupMenu")
 	defer proc("DestroyMenu", menu)
-	proc("AppendMenuW", menu, 0, 1, uintptr(unsafe.Pointer(wide("Show Kobashi2"))))
-	proc("AppendMenuW", menu, 0, 2, uintptr(unsafe.Pointer(wide("Quit Kobashi2"))))
+	proc("AppendMenuW", menu, 0, 1, uintptr(unsafe.Pointer(wide(w.tr("Show ModelBridge")))))
+	proc("AppendMenuW", menu, 0, 2, uintptr(unsafe.Pointer(wide(w.tr("Quit ModelBridge")))))
 	var p point
 	proc("GetCursorPos", uintptr(unsafe.Pointer(&p)))
 	proc("SetForegroundWindow", w.Handle)
@@ -974,6 +1014,7 @@ func (w *Window) trayMenu() {
 	} else if selected == 2 {
 		w.quit()
 	}
+
 	proc("PostMessageW", w.Handle, 0, 0, 0)
 }
 func (w *Window) applyTheme() {
@@ -1063,8 +1104,8 @@ func windowProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		}
 		return 0
 	case 0x111:
-		if wp>>16 == 1 && int(wp&0xffff) == idAppearance {
-			w.command(idAppearance)
+		if wp>>16 == 1 && (int(wp&0xffff) == idAppearance || int(wp&0xffff) == idLanguage) {
+			w.command(int(wp & 0xffff))
 		} else if wp>>16 == 0 {
 			w.command(int(wp & 0xffff))
 		} else if wp>>16 == 0x300 && int(wp&0xffff) == idToken {
@@ -1212,7 +1253,7 @@ func Run(app *bridge.App, hidden bool) error {
 		return err
 	}
 	defer user.NewProc("UnregisterClassW").Call(uintptr(unsafe.Pointer(wide("KobashiNativeWindow"))), 0)
-	h, _, err := user.NewProc("CreateWindowExW").Call(windowExtendedStyle, uintptr(unsafe.Pointer(wide("KobashiNativeWindow"))), uintptr(unsafe.Pointer(wide("Kobashi2"))), windowStyle, 100, 100, windowWidth, windowHeight, 0, 0, 0, 0)
+	h, _, err := user.NewProc("CreateWindowExW").Call(windowExtendedStyle, uintptr(unsafe.Pointer(wide("KobashiNativeWindow"))), uintptr(unsafe.Pointer(wide("ModelBridge"))), windowStyle, 100, 100, windowWidth, windowHeight, 0, 0, 0, 0)
 	if h == 0 {
 		return err
 	}

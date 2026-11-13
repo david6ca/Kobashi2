@@ -37,12 +37,15 @@ func (l *localManager) environment() []string {
 	env := []string{}
 	for _, e := range os.Environ() {
 		key, _, _ := strings.Cut(e, "=")
-		if strings.HasPrefix(key, "PIP_") || strings.HasPrefix(key, "PYTHON") || strings.HasPrefix(key, "UV_") || strings.HasPrefix(key, "HF_") || strings.HasPrefix(key, "OMLX_") || strings.HasPrefix(key, "ANTHROPIC_") || strings.HasPrefix(key, "OPENAI_") || strings.HasPrefix(key, "GITHUB_") || key == "GH_TOKEN" || key == "VIRTUAL_ENV" {
+		if key == "HOME" || strings.HasPrefix(key, "PIP_") || strings.HasPrefix(key, "PYTHON") || strings.HasPrefix(key, "UV_") || strings.HasPrefix(key, "HF_") || strings.HasPrefix(key, "OMLX_") || strings.HasPrefix(key, "ANTHROPIC_") || strings.HasPrefix(key, "OPENAI_") || strings.HasPrefix(key, "GITHUB_") || key == "GH_TOKEN" || key == "VIRTUAL_ENV" {
 			continue
 		}
 		env = append(env, e)
 	}
-	return append(env, "PYTHONNOUSERSITE=1", "PYTHONUNBUFFERED=1", "HF_HUB_DISABLE_IMPLICIT_TOKEN=1", "HF_HUB_DISABLE_TELEMETRY=1", "DO_NOT_TRACK=1", "HF_HOME="+l.path("hf-cache"), "UV_CACHE_DIR="+l.path("package-cache"), "UV_PYTHON_INSTALL_DIR="+l.path("python"), "UV_PYTHON_PREFERENCE=managed", "UV_NO_CONFIG=1", "UV_DEFAULT_INDEX="+localPackageIndex, "PIP_INDEX_URL="+localPackageIndex, "PIP_CONFIG_FILE="+os.DevNull, "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_MLX_LM=0.32.3.dev0+g0d4d3d04", "UV_PYTHON_BIN_DIR="+l.path("python-bin"))
+	if appStoreBuild {
+		env = append(env, l.storePythonEnvironment()...)
+	}
+	return append(env, "HOME="+l.app.options.Home, "PYTHONNOUSERSITE=1", "PYTHONUNBUFFERED=1", "HF_HUB_DISABLE_IMPLICIT_TOKEN=1", "HF_HUB_DISABLE_TELEMETRY=1", "DO_NOT_TRACK=1", "HF_HOME="+l.path("hf-cache"), "UV_CACHE_DIR="+l.path("package-cache"), "UV_PYTHON_INSTALL_DIR="+l.path("python"), "UV_PYTHON_PREFERENCE=managed", "UV_NO_CONFIG=1", "UV_DEFAULT_INDEX="+localPackageIndex, "PIP_INDEX_URL="+localPackageIndex, "PIP_CONFIG_FILE="+os.DevNull, "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_MLX_LM=0.32.3.dev0+g0d4d3d04", "UV_PYTHON_BIN_DIR="+l.path("python-bin"))
 }
 func (l *localManager) command(ctx context.Context, name string, args ...string) *exec.Cmd {
 	c := exec.CommandContext(ctx, name, args...)
@@ -51,6 +54,9 @@ func (l *localManager) command(ctx context.Context, name string, args ...string)
 	return c
 }
 func (l *localManager) python() string {
+	if appStoreBuild {
+		return l.bundledPython()
+	}
 	return l.path("runtime-"+localRuntimeVersion, "bin", "python3")
 }
 func (l *localManager) run(ctx context.Context, name string, args ...string) error {
@@ -167,7 +173,7 @@ func (l *localManager) prepare(ctx context.Context, m localModel) error {
 		return errors.New("Not enough disk space to download this model")
 	}
 	l.progress("Downloading", 0, m.Bytes)
-	c := l.command(ctx, l.python(), l.path("support.py"), "download", m.Repo, m.Revision, l.path("models", m.ID))
+	c := l.command(ctx, l.python(), l.modelDownloadScript(), "download", m.Repo, m.Revision, l.path("models", m.ID))
 	pipe, err := c.StdoutPipe()
 	if err != nil {
 		return err
@@ -305,6 +311,16 @@ func (l *localManager) preparePython(ctx context.Context, uv string) error {
 }
 
 func (l *localManager) installRuntime(ctx context.Context) error {
+	if appStoreBuild {
+		ready, err := l.checkInstallation(ctx, l.python(), localPythonCheck+"; import omlx.server")
+		if err != nil {
+			return err
+		}
+		if !ready {
+			return errors.New("Bundled model runtime is unavailable")
+		}
+		return nil
+	}
 	marker := l.path("runtime-"+localRuntimeVersion, ".kobashi-ready")
 	l.installProgress(0, "Checking installed tools")
 	check := localPythonCheck + fmt.Sprintf("; from importlib.metadata import version; assert version('omlx') == %q; from omlx.model_settings import ModelSettings; ModelSettings(turboquant_kv_enabled=True, turboquant_kv_scheme='turboquant', turboquant_kv_bits=4); import omlx.server", localRuntimeVersion)

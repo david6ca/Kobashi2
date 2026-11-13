@@ -80,7 +80,7 @@ func main() {
 		desktop.ShowError(err.Error())
 		os.Exit(1)
 	}
-	log.Printf("Kobashi2 starting version=%s platform=%s/%s pid=%d time=%s", Version, runtime.GOOS, runtime.GOARCH, os.Getpid(), time.Now().Format(time.RFC3339))
+	log.Printf("ModelBridge starting version=%s platform=%s/%s pid=%d time=%s", Version, runtime.GOOS, runtime.GOARCH, os.Getpid(), time.Now().Format(time.RFC3339))
 	options := bridge.Options{Home: *home, Executable: executable, AppPath: os.Getenv("KOBASHI_APP_PATH"), Version: Version, ControlToken: os.Getenv("KOBASHI_CONTROL_TOKEN"),
 		Ports: bridge.Ports{Codex: 18921 + *offset, Control: 18922 + *offset, Claude: 18923 + *offset, Copilot: 18925 + *offset}, Desktop: !*headless || os.Getenv("KOBASHI_APP_PATH") != ""}
 	if *noStartup {

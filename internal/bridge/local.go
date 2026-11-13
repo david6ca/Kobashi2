@@ -430,7 +430,7 @@ func (l *localManager) activate(ctx context.Context, id string) (result error) {
 	if !slices.Contains(next.LocalModels, id) {
 		next.LocalModels = append(append([]string(nil), next.LocalModels...), id)
 	}
-	if !previous.active() {
+	if !previous.active() && !appStoreBuild {
 		next.Codex = true
 		next.Claude = true
 	}

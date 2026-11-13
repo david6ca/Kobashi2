@@ -1,0 +1,274 @@
+{
+  "status": "app_store_connect_draft",
+  "productName": "ModelBridge",
+  "platform": "MAC_OS",
+  "version": "2.2.1",
+  "bundleId": "com.pomegram.modelbridge",
+  "primaryCategoryRecommendation": "DEVELOPER_TOOLS",
+  "supportURL": "https://modelbridge-ev3.pages.dev/en/support/",
+  "privacyPolicyURL": "https://modelbridge-ev3.pages.dev/en/privacy/",
+  "localizations": {
+    "en-US": {
+      "productLocale": "en",
+      "name": "ModelBridge",
+      "subtitle": "One source for coding tools",
+      "promotionalText": "One source. Your coding tools.",
+      "description": "Connect Claude Code, Codex and GitHub Copilot to a source you choose. Manage saved accounts, switch sources and control each client in one native window.\n\nRequires macOS 13 or later. Local models require an Apple Silicon Mac with macOS 15 or later, enough memory and storage, and an initial download. Local inference needs no Copilot subscription. GitHub Copilot mode requires an eligible account and uses its allowance; requests are processed by GitHub Copilot and its model providers. Clients must be installed separately. ModelBridge is an independent product.",
+      "keywords": "ai,coding,developer,local,model,assistant,workflow,tools,offline",
+      "screenshotCaptions": [
+        "One source. Your coding tools.",
+        "Your language. Your workflow."
+      ],
+      "screenshots": [
+        "screenshots/en/01-clients.png",
+        "screenshots/en/02-settings.png"
+      ],
+      "supportURL": "https://modelbridge-ev3.pages.dev/en/support/",
+      "privacyPolicyURL": "https://modelbridge-ev3.pages.dev/en/privacy/"
+    },
+    "zh-Hans": {
+      "productLocale": "zh-Hans",
+      "name": "ModelBridge",
+      "subtitle": "连接你的编程工具",
+      "promotionalText": "一个来源，连接编程工具",
+      "description": "为 Claude Code、Codex 和 GitHub Copilot 选择推理来源。在一个原生窗口中管理账号、切换来源，独立控制各客户端。\n\n需要 macOS 13 或更新版本。本地模型需要 Apple Silicon Mac、macOS 15 或更新版本、足够内存与存储，并需首次下载；本地推理不需要 Copilot 订阅。GitHub Copilot 模式需要有权限的账号，使用该账号额度，请求由 GitHub Copilot 及其模型服务商处理。客户端需另行安装。ModelBridge 是独立产品。",
+      "keywords": "AI,编程,开发,本地模型,助手,工具,离线",
+      "screenshotCaptions": [
+        "一个来源，连接编程工具",
+        "你的语言，你的工作方式"
+      ],
+      "screenshots": [
+        "screenshots/zh-Hans/01-clients.png",
+        "screenshots/zh-Hans/02-settings.png"
+      ],
+      "supportURL": "https://modelbridge-ev3.pages.dev/zh-Hans/support/",
+      "privacyPolicyURL": "https://modelbridge-ev3.pages.dev/zh-Hans/privacy/"
+    },
+    "zh-Hant": {
+      "productLocale": "zh-Hant",
+      "name": "ModelBridge",
+      "subtitle": "連接你的程式工具",
+      "promotionalText": "一個來源，連接程式工具",
+      "description": "為 Claude Code、Codex 和 GitHub Copilot 選擇推理來源。在一個原生視窗中管理帳號、切換來源，獨立控制各用戶端。\n\n需要 macOS 13 或以上版本。本機模型需要 Apple Silicon Mac、macOS 15 或以上版本、足夠記憶體與儲存空間，並需首次下載；本機推理不需要 Copilot 訂閱。GitHub Copilot 模式需要具權限的帳號，使用該帳號額度，請求由 GitHub Copilot 及其模型服務商處理。用戶端需另行安裝。ModelBridge 是獨立產品。",
+      "keywords": "AI,程式開發,本機模型,助理,工具,離線",
+      "screenshotCaptions": [
+        "一個來源，連接程式工具",
+        "你的語言，你的工作方式"
+      ],
+      "screenshots": [
+        "screenshots/zh-Hant/01-clients.png",
+        "screenshots/zh-Hant/02-settings.png"
+      ],
+      "supportURL": "https://modelbridge-ev3.pages.dev/zh-Hant/support/",
+      "privacyPolicyURL": "https://modelbridge-ev3.pages.dev/zh-Hant/privacy/"
+    },
+    "ja": {
+      "productLocale": "ja",
+      "name": "ModelBridge",
+      "subtitle": "開発ツールをひとつのソースで",
+      "promotionalText": "ひとつのソースで開発ツールを",
+      "description": "Claude Code、Codex、GitHub Copilot を選んだ推論ソースに接続。ネイティブなウインドウでアカウントを管理し、ソースの切り替えと各クライアントの操作を行えます。\n\nmacOS 13 以降が必要です。ローカルモデルには Apple Silicon Mac、macOS 15 以降、十分なメモリとストレージ、初回ダウンロードが必要です。ローカル推論に Copilot 契約は不要です。GitHub Copilot モードには利用可能なアカウントが必要で、その利用枠を使い、GitHub Copilot とモデル提供者が処理します。クライアントは別途インストールしてください。ModelBridge は独立した製品です。",
+      "keywords": "AI,開発,コーディング,ローカルモデル,ツール,オフライン",
+      "screenshotCaptions": [
+        "ひとつのソースで開発ツールを",
+        "いつもの言語で、いつもの開発を"
+      ],
+      "screenshots": [
+        "screenshots/ja/01-clients.png",
+        "screenshots/ja/02-settings.png"
+      ],
+      "supportURL": "https://modelbridge-ev3.pages.dev/ja/support/",
+      "privacyPolicyURL": "https://modelbridge-ev3.pages.dev/ja/privacy/"
+    },
+    "ko": {
+      "productLocale": "ko",
+      "name": "ModelBridge",
+      "subtitle": "코딩 도구를 하나의 소스로",
+      "promotionalText": "하나의 소스로 코딩 도구 연결",
+      "description": "Claude Code, Codex, GitHub Copilot을 선택한 추론 소스에 연결하세요. 하나의 네이티브 창에서 계정을 관리하고 소스를 전환하며 각 클라이언트를 제어할 수 있습니다.\n\nmacOS 13 이상이 필요합니다. 로컬 모델은 Apple Silicon Mac, macOS 15 이상, 충분한 메모리와 저장 공간, 최초 다운로드가 필요합니다. 로컬 추론에는 Copilot 구독이 필요하지 않습니다. GitHub Copilot 모드는 사용 가능한 계정과 그 사용량 한도를 사용하며 GitHub Copilot 및 모델 제공업체가 요청을 처리합니다. 클라이언트는 별도 설치해야 합니다. ModelBridge는 독립 제품입니다.",
+      "keywords": "AI,코딩,개발,로컬모델,도구,오프라인",
+      "screenshotCaptions": [
+        "하나의 소스로 코딩 도구 연결",
+        "나의 언어로 작업하기"
+      ],
+      "screenshots": [
+        "screenshots/ko/01-clients.png",
+        "screenshots/ko/02-settings.png"
+      ],
+      "supportURL": "https://modelbridge-ev3.pages.dev/ko/support/",
+      "privacyPolicyURL": "https://modelbridge-ev3.pages.dev/ko/privacy/"
+    },
+    "de-DE": {
+      "productLocale": "de",
+      "name": "ModelBridge",
+      "subtitle": "Eine Quelle für Coding-Tools",
+      "promotionalText": "Eine Quelle. Ihre Coding-Tools.",
+      "description": "Verbinden Sie Claude Code, Codex und GitHub Copilot mit einer Quelle Ihrer Wahl. Verwalten Sie Konten, wechseln Sie Quellen und steuern Sie die Clients in einem nativen Fenster.\n\nErfordert macOS 13 oder neuer. Lokale Modelle benötigen einen Apple Silicon Mac mit macOS 15 oder neuer, ausreichend Speicher und einen ersten Download. Lokale Inferenz benötigt kein Copilot-Abo. GitHub-Copilot-Modus erfordert ein berechtigtes Konto und nutzt dessen Kontingent; GitHub Copilot und Modellanbieter verarbeiten die Anfragen. Clients separat installieren. ModelBridge ist unabhängig.",
+      "keywords": "ki,programmieren,entwickler,lokal,modell,assistent,workflow,tools,offline",
+      "screenshotCaptions": [
+        "Eine Quelle. Ihre Coding-Tools.",
+        "Ihre Sprache. Ihr Workflow."
+      ],
+      "screenshots": [
+        "screenshots/de/01-clients.png",
+        "screenshots/de/02-settings.png"
+      ],
+      "supportURL": "https://modelbridge-ev3.pages.dev/de/support/",
+      "privacyPolicyURL": "https://modelbridge-ev3.pages.dev/de/privacy/"
+    },
+    "fr-FR": {
+      "productLocale": "fr",
+      "name": "ModelBridge",
+      "subtitle": "Une source pour vos outils",
+      "promotionalText": "Une source. Vos outils de code.",
+      "description": "Connectez Claude Code, Codex et GitHub Copilot à la source de votre choix. Gérez les comptes, changez de source et contrôlez chaque client dans une fenêtre native.\n\nNécessite macOS 13 ou ultérieur. Les modèles locaux exigent un Mac Apple Silicon avec macOS 15 ou ultérieur, assez de mémoire et de stockage, et un téléchargement initial. Aucun abonnement Copilot n’est nécessaire en local. Le mode GitHub Copilot exige un compte éligible et utilise son quota ; GitHub Copilot et ses fournisseurs traitent les requêtes. Les clients s’installent séparément. ModelBridge est indépendant.",
+      "keywords": "ia,code,développement,local,modèle,assistant,outils,hors ligne",
+      "screenshotCaptions": [
+        "Une source. Vos outils de code.",
+        "Votre langue. Votre façon de coder."
+      ],
+      "screenshots": [
+        "screenshots/fr/01-clients.png",
+        "screenshots/fr/02-settings.png"
+      ],
+      "supportURL": "https://modelbridge-ev3.pages.dev/fr/support/",
+      "privacyPolicyURL": "https://modelbridge-ev3.pages.dev/fr/privacy/"
+    },
+    "pt-BR": {
+      "productLocale": "pt-BR",
+      "name": "ModelBridge",
+      "subtitle": "Uma fonte para programar",
+      "promotionalText": "Uma fonte. Suas ferramentas.",
+      "description": "Conecte Claude Code, Codex e GitHub Copilot à fonte que você escolher. Gerencie contas, alterne fontes e controle cada cliente em uma janela nativa.\n\nRequer macOS 13 ou posterior. Modelos locais exigem Mac com Apple Silicon, macOS 15 ou posterior, memória e espaço suficientes e um download inicial. A inferência local não exige assinatura Copilot. O modo GitHub Copilot exige conta elegível e usa sua cota; GitHub Copilot e os provedores processam as solicitações. Instale os clientes separadamente. ModelBridge é independente.",
+      "keywords": "ia,código,desenvolvedor,local,modelo,assistente,ferramentas,offline",
+      "screenshotCaptions": [
+        "Uma fonte. Suas ferramentas.",
+        "Seu idioma. Seu fluxo de trabalho."
+      ],
+      "screenshots": [
+        "screenshots/pt-BR/01-clients.png",
+        "screenshots/pt-BR/02-settings.png"
+      ],
+      "supportURL": "https://modelbridge-ev3.pages.dev/pt-BR/support/",
+      "privacyPolicyURL": "https://modelbridge-ev3.pages.dev/pt-BR/privacy/"
+    },
+    "es-ES": {
+      "productLocale": "es",
+      "name": "ModelBridge",
+      "subtitle": "Una fuente para programar",
+      "promotionalText": "Una fuente. Tus herramientas.",
+      "description": "Conecta Claude Code, Codex y GitHub Copilot a la fuente que elijas. Gestiona cuentas, cambia de fuente y controla cada cliente en una ventana nativa.\n\nRequiere macOS 13 o posterior. Los modelos locales necesitan un Mac con Apple Silicon, macOS 15 o posterior, memoria y espacio suficientes y una descarga inicial. La inferencia local no requiere suscripción a Copilot. El modo GitHub Copilot requiere una cuenta válida y usa su cuota; GitHub Copilot y sus proveedores procesan las solicitudes. Instala los clientes por separado. ModelBridge es independiente.",
+      "keywords": "ia,código,desarrollo,local,modelo,asistente,herramientas,sin conexión",
+      "screenshotCaptions": [
+        "Una fuente. Tus herramientas.",
+        "Tu idioma. Tu forma de trabajar."
+      ],
+      "screenshots": [
+        "screenshots/es/01-clients.png",
+        "screenshots/es/02-settings.png"
+      ],
+      "supportURL": "https://modelbridge-ev3.pages.dev/es/support/",
+      "privacyPolicyURL": "https://modelbridge-ev3.pages.dev/es/privacy/"
+    },
+    "ar-SA": {
+      "productLocale": "ar",
+      "name": "ModelBridge",
+      "subtitle": "مصدر واحد لأدوات البرمجة",
+      "promotionalText": "مصدر واحد لأدوات البرمجة",
+      "description": "اربط Claude Code وCodex وGitHub Copilot بمصدر تختاره. أدر الحسابات وبدّل المصادر وتحكم بكل عميل في نافذة أصلية واحدة.\n\nيتطلب macOS 13 أو أحدث. تتطلب النماذج المحلية Mac بمعالج Apple Silicon وmacOS 15 أو أحدث وذاكرة ومساحة كافيتين وتنزيلًا أوليًا. لا يتطلب الاستدلال المحلي اشتراك Copilot. يتطلب وضع GitHub Copilot حسابًا مؤهلًا ويستخدم حصته؛ يعالج GitHub Copilot ومزودو النماذج الطلبات. تُثبّت تطبيقات العملاء بشكل منفصل. ModelBridge منتج مستقل.",
+      "keywords": "ذكاء اصطناعي,برمجة,تطوير,محلي,نموذج,مساعد,أدوات",
+      "screenshotCaptions": [
+        "مصدر واحد لأدوات البرمجة",
+        "لغتك. أسلوب عملك."
+      ],
+      "screenshots": [
+        "screenshots/ar/01-clients.png",
+        "screenshots/ar/02-settings.png"
+      ],
+      "supportURL": "https://modelbridge-ev3.pages.dev/ar/support/",
+      "privacyPolicyURL": "https://modelbridge-ev3.pages.dev/ar/privacy/"
+    },
+    "hi": {
+      "productLocale": "hi",
+      "name": "ModelBridge",
+      "subtitle": "कोडिंग टूल के लिए एक स्रोत",
+      "promotionalText": "एक स्रोत। आपके कोडिंग टूल।",
+      "description": "Claude Code, Codex और GitHub Copilot को अपने चुने स्रोत से जोड़ें। एक नेटिव विंडो में खाते सँभालें, स्रोत बदलें और हर क्लाइंट नियंत्रित करें।\n\nmacOS 13 या नया चाहिए। स्थानीय मॉडल के लिए Apple Silicon Mac, macOS 15 या नया, पर्याप्त मेमोरी व स्टोरेज और पहला डाउनलोड चाहिए। स्थानीय अनुमान के लिए Copilot सदस्यता नहीं चाहिए। GitHub Copilot मोड को पात्र खाता चाहिए और उसी का कोटा लगता है; GitHub Copilot और मॉडल प्रदाता अनुरोध संसाधित करते हैं। क्लाइंट अलग इंस्टॉल करें। ModelBridge स्वतंत्र उत्पाद है।",
+      "keywords": "ai,कोडिंग,डेवलपर,स्थानीय,मॉडल,सहायक,टूल,ऑफलाइन",
+      "screenshotCaptions": [
+        "एक स्रोत। आपके कोडिंग टूल।",
+        "आपकी भाषा। आपका काम।"
+      ],
+      "screenshots": [
+        "screenshots/hi/01-clients.png",
+        "screenshots/hi/02-settings.png"
+      ],
+      "supportURL": "https://modelbridge-ev3.pages.dev/hi/support/",
+      "privacyPolicyURL": "https://modelbridge-ev3.pages.dev/hi/privacy/"
+    },
+    "ru": {
+      "productLocale": "ru",
+      "name": "ModelBridge",
+      "subtitle": "Один источник для инструментов",
+      "promotionalText": "Один источник для инструментов",
+      "description": "Подключайте Claude Code, Codex и GitHub Copilot к выбранному источнику. Управляйте аккаунтами, переключайте источники и настраивайте клиентов в одном нативном окне.\n\nТребуется macOS 13 или новее. Для локальных моделей нужен Mac с Apple Silicon, macOS 15 или новее, достаточно памяти и места, а также первоначальная загрузка. Локальная работа не требует подписки Copilot. Режим GitHub Copilot требует подходящего аккаунта и использует его лимит; запросы обрабатывают GitHub Copilot и поставщики моделей. Клиенты устанавливаются отдельно. ModelBridge — независимый продукт.",
+      "keywords": "ии,код,разработка,локальный,модель,помощник,инструменты,офлайн",
+      "screenshotCaptions": [
+        "Один источник для инструментов",
+        "Ваш язык. Ваш рабочий процесс."
+      ],
+      "screenshots": [
+        "screenshots/ru/01-clients.png",
+        "screenshots/ru/02-settings.png"
+      ],
+      "supportURL": "https://modelbridge-ev3.pages.dev/ru/support/",
+      "privacyPolicyURL": "https://modelbridge-ev3.pages.dev/ru/privacy/"
+    },
+    "vi": {
+      "productLocale": "vi",
+      "name": "ModelBridge",
+      "subtitle": "Nguồn cho công cụ lập trình",
+      "promotionalText": "Một nguồn cho công cụ lập trình",
+      "description": "Kết nối Claude Code, Codex và GitHub Copilot với nguồn bạn chọn. Quản lý tài khoản, chuyển nguồn và điều khiển từng ứng dụng khách trong một cửa sổ gốc.\n\nCần macOS 13 trở lên. Mô hình cục bộ cần Mac Apple Silicon, macOS 15 trở lên, đủ bộ nhớ và dung lượng, cùng lượt tải đầu tiên. Suy luận cục bộ không cần đăng ký Copilot. Chế độ GitHub Copilot cần tài khoản đủ điều kiện và dùng hạn mức của tài khoản; GitHub Copilot và nhà cung cấp mô hình xử lý yêu cầu. Cài riêng các ứng dụng khách. ModelBridge là sản phẩm độc lập.",
+      "keywords": "ai,lập trình,phát triển,cục bộ,mô hình,trợ lý,công cụ,ngoại tuyến",
+      "screenshotCaptions": [
+        "Một nguồn cho công cụ lập trình",
+        "Ngôn ngữ của bạn. Cách làm của bạn."
+      ],
+      "screenshots": [
+        "screenshots/vi/01-clients.png",
+        "screenshots/vi/02-settings.png"
+      ],
+      "supportURL": "https://modelbridge-ev3.pages.dev/vi/support/",
+      "privacyPolicyURL": "https://modelbridge-ev3.pages.dev/vi/privacy/"
+    }
+  },
+  "appId": "6833990021",
+  "appStoreConnectURL": "https://appstoreconnect.apple.com/apps/6833990021/distribution/info",
+  "remoteTextVerifiedLocales": [
+    "en-US",
+    "zh-Hans",
+    "zh-Hant",
+    "ja",
+    "ko",
+    "de-DE",
+    "fr-FR",
+    "pt-BR",
+    "es-ES",
+    "ar-SA",
+    "hi",
+    "ru",
+    "vi"
+  ],
+  "screenshotStatus": "current_ui_captured_2026_11_13",
+  "remoteScreenshotAssignmentsAtPause": {
+    "en-US": 2,
+    "zh-Hans": 4
+  },
+  "remoteScreenshotNote": "Simplified Chinese has duplicate assignments after a delayed upload retry. Further screenshot upload, replacement and cleanup are paused by the user.",
+  "appStoreSandboxAuthorized": true,
+  "candidateVersion": "2.2.1",
+  "candidateBuild": "1",
+  "candidateStatus": "archived_exported_not_uploaded",
+  "screenshotCaptureMethod": "WindowServer native window capture with preserved aspect ratio and window chrome"
+}

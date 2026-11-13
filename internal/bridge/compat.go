@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"encoding/json"
 	"regexp"
 	"slices"
 	"strings"
@@ -187,6 +188,9 @@ func repairRequest(body, errorBody object) (object, constraints, bool) {
 	return out, rules, changed
 }
 func authFailure(status int, body []byte) bool {
+	if inputConnectionMismatch(status, body) {
+		return false
+	}
 	if status == 401 {
 		return true
 	}
@@ -206,6 +210,66 @@ func authFailure(status int, body []byte) bool {
 		}
 	}
 	return false
+}
+
+// Copilot uses 401 for history owned by a different account/connection too.
+// Refreshing credentials cannot make those input items valid.
+func inputConnectionMismatch(status int, body []byte) bool {
+	if status != 401 && status != 400 {
+		return false
+	}
+	message := strings.TrimSpace(string(body))
+	var value object
+	if json.Unmarshal(body, &value) == nil {
+		message = str(parseError(value)["message"])
+		if message == "" {
+			message = str(value["error"])
+		}
+		if message == "" {
+			message = str(value["message"])
+		}
+	}
+	message = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(message)), ".")
+	return message == "input item does not belong to this connection" || message == "input item id does not belong to this connection"
+}
+
+func repairConnectionHistory(body object) (object, bool) {
+	// References and compaction may be the only copy of earlier context. Never
+	// discard them or pretend we can reconstruct their contents.
+	if body == nil || str(body["previous_response_id"]) != "" {
+		return body, false
+	}
+	input := arr(body["input"])
+	for _, value := range input {
+		if contains([]string{"item_reference", "compaction"}, str(obj(value)["type"])) {
+			return body, false
+		}
+	}
+	next := clone(body)
+	kept := []any{}
+	changed := false
+	for _, value := range arr(next["input"]) {
+		item := obj(value)
+		if item["type"] == "reasoning" {
+			changed = true
+			continue
+		}
+		// Only detach fully supplied messages/calls. call_id pairs the tool
+		// result with its call and must remain unchanged.
+		full := (item["type"] == "message" && item["content"] != nil) ||
+			(item["type"] == "function_call" && item["arguments"] != nil && str(item["name"]) != "" && str(item["call_id"]) != "") ||
+			(item["type"] == "custom_tool_call" && item["input"] != nil && str(item["name"]) != "" && str(item["call_id"]) != "")
+		if full && str(item["id"]) != "" {
+			delete(item, "id")
+			changed = true
+		}
+		kept = append(kept, value)
+	}
+	if !changed || len(kept) == 0 {
+		return body, false
+	}
+	next["input"] = kept
+	return next, true
 }
 func modelUnavailable(status int, body object) bool {
 	return slices.Contains([]int{400, 403, 404, 410}, status) && contains([]string{"model_not_found", "model_not_supported", "model_not_available", "model_access_denied", "model_retired"}, str(parseError(body)["code"]))

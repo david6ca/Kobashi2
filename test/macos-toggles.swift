@@ -26,9 +26,9 @@ class ToggleCheckDelegate: AppDelegate {
         status = ["connected": true, "codexEnabled": true, "claudeEnabled": true, "copilotEnabled": true,
                   "copilotURL": "http://127.0.0.1:18925/v1"]
         render()
-        let clients = [("codex", "Codex", CGFloat(184)),
-                       ("claude", "Claude Code", CGFloat(234)),
-                       ("copilot", "GitHub Copilot", CGFloat(284))]
+        let clients = [("codex", "Codex", CGFloat(109)),
+                       ("claude", "Claude Code", CGFloat(153)),
+                       ("copilot", "GitHub Copilot", CGFloat(197))]
         for (key, title, y) in clients {
             let button = controls[key] as! NativeButton
             check(button.title == title && button.accessibilityLabel() == title && button.frame.minY == y,
@@ -56,9 +56,9 @@ class ToggleCheckDelegate: AppDelegate {
         let key = String(path.dropFirst("/api/toggle-".count))
         check(pendingBridge == key && busy && notice.isEmpty && controls["notice"]?.isHidden == true,
               "The \(key) toggle has no progress banner")
-        check(window.contentView?.bounds.size == NSSize(width: 400, height: 390) &&
-              controls["codex"]?.frame.minY == 184 && controls["claude"]?.frame.minY == 234 &&
-              controls["copilot"]?.frame.minY == 284,
+        check(window.contentView?.bounds.size == homeWindowSize &&
+              controls["codex"]?.frame.minY == 109 && controls["claude"]?.frame.minY == 153 &&
+              controls["copilot"]?.frame.minY == 197,
               "The pending \(key) toggle does not move or resize the homepage")
         for other in ["codex", "claude", "copilot"] {
             let button = controls[other] as! NativeButton

@@ -28,8 +28,8 @@ class AppearanceCheckDelegate: AppDelegate {
         check(path == "/api/appearance", "Appearance never changes login or client configuration")
         check(busy && notice.isEmpty && controls["settingsTitle"]?.isHidden == false && !selector.isEnabled,
               "Saving appearance is silent and disables only the pending interaction")
-        check(window.frame == originalFrame && controls["project"]?.frame.minY == 356,
-              "Saving appearance does not resize Settings or move the footer")
+        check(window.frame == originalFrame && controls["project"] == nil,
+              "Saving appearance does not resize Settings or restore a version footer")
         if let error = nextError {
             nextError = nil
             DispatchQueue.main.async { completion(nil, error) }

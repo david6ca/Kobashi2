@@ -1,18 +1,18 @@
-# Kobashi2
+# ModelBridge
 
 Route Claude Code, OpenAI Codex, and the GitHub Copilot app through GitHub Copilot or managed local models.
 
-Kobashi2 is a local bridge that lets [Claude Code](https://www.anthropic.com/claude-code), [OpenAI Codex](https://openai.com/index/introducing-gpt-5-3-codex/), and the [GitHub Copilot app](https://github.com/github/app) use your existing GitHub Copilot subscription instead of separate Anthropic or OpenAI API keys. The Copilot app can keep its own GitHub login while using the account connected to Kobashi2 for model inference.
+ModelBridge is a local bridge that lets [Claude Code](https://www.anthropic.com/claude-code), [OpenAI Codex](https://openai.com/index/introducing-gpt-5-3-codex/), and the [GitHub Copilot app](https://github.com/github/app) use your existing GitHub Copilot subscription instead of separate Anthropic or OpenAI API keys. The Copilot app can keep its own GitHub login while using the account connected to ModelBridge for model inference.
 
 ## Running the app
 
-Use the [native build commands](#building) to generate `dist/Kobashi2.exe` on
-Windows or `dist/Kobashi2.app` on macOS. Run the Windows executable directly.
-On macOS, copy `Kobashi2.app` to Applications and launch it there, not from the
+Use the [native build commands](#building) to generate `dist/ModelBridge.exe` on
+Windows or `dist/ModelBridge.app` on macOS. Run the Windows executable directly.
+On macOS, copy `ModelBridge.app` to Applications and launch it there, not from the
 synced checkout.
-Kobashi2 itself needs no additional runtime installation.
+ModelBridge itself needs no additional runtime installation.
 
-The desktop app is now named **Kobashi2**. Existing login, settings, ports, and
+The desktop app is now named **ModelBridge**. Existing login, settings, ports, and
 client integration identities stay unchanged: state remains in `~/.kobashi`,
 and the Codex/Copilot custom provider is still named **Kobashi**. The macOS bundle
 identifier and startup registration keys also retain their existing values, so
@@ -21,9 +21,9 @@ replacing an older installation, keep only the renamed app at its installed
 location and update an enabled login item's app path without launching both.
 
 > **macOS first launch — "unidentified developer" warning**  
-> Kobashi2 isn't signed with an Apple Developer ID ($99/yr — not worth it for a free tool), so macOS Gatekeeper blocks the first launch. Drag `Kobashi2.app` to `/Applications`, then run this **once** in Terminal to remove the quarantine flag:
+> ModelBridge isn't signed with an Apple Developer ID ($99/yr — not worth it for a free tool), so macOS Gatekeeper blocks the first launch. Drag `ModelBridge.app` to `/Applications`, then run this **once** in Terminal to remove the quarantine flag:
 > ```bash
-> xattr -dr com.apple.quarantine /Applications/Kobashi2.app
+> xattr -dr com.apple.quarantine /Applications/ModelBridge.app
 > ```
 > After that, double-click opens it normally — no warning, no trip through System Settings. (Alternative: right-click the app → **Open** → **Open** in the dialog — works but the `xattr` command is faster and sticks.)
 >
@@ -32,15 +32,14 @@ location and update an enabled login item's app path without launching both.
 ## How It Works
 
 1. **Double-click** the app — a native Win32 window opens on Windows, or a Cocoa window on macOS
-2. **Click Not Connected** — authorize via GitHub device flow; the status turns
-   green and reads **Connected**. Click it to disconnect.
+2. **Click Not Connected** — on macOS, choose **Add GitHub account** for GitHub device authorization, or **Add a local model** for local setup. After connecting, **Connected** opens the account menu. Windows retains its GitHub sign-in flow.
 3. **Toggle the clients** — enable Claude, Codex, and/or Copilot
-4. **Connect your clients** — Kobashi2 auto-configures `~/.claude/settings.json` and `~/.codex/`. Enabling Copilot registers its provider when the app is available and automatically connects eligible idle local sessions; no preselected session is required.
+4. **Connect your clients** — ModelBridge auto-configures `~/.claude/settings.json` and `~/.codex/`. Enabling Copilot registers its provider when the app is available and automatically connects eligible idle local sessions; no preselected session is required.
 
-The Go bridge intercepts API requests on localhost and forwards them to the GitHub Copilot API using your Copilot token. It manages token refresh, config injection, cleanup, and Anthropic↔OpenAI format translation automatically. The application uses only native code and operating-system libraries. GitHub device authorization opens your default browser; token sign-in stays in the native window.
+The Go bridge intercepts API requests on localhost and forwards them to the GitHub Copilot API using your Copilot token. It manages token refresh, config injection, cleanup, and Anthropic↔OpenAI format translation automatically. The application uses only native code and operating-system libraries. The macOS GitHub page only offers device authorization. Click its GitHub URL to open your browser.
 
 If account or Copilot access verification times out after browser authorization,
-keep the sign-in window open. Kobashi2 retries verification using the token
+keep the sign-in window open. ModelBridge retries verification using the token
 already received, without redeeming the device code again. The temporary token
 is reused for at most 15 minutes and is not saved until verification
 succeeds. Starting another sign-in discards it. Errors identify which verification
@@ -58,42 +57,50 @@ connection recovers without clearing errors from user actions.
 
 Open **Settings** from the main window to change these options:
 
-- **Start at login** starts Kobashi2 when you sign in to your computer. Windows
+- **Start at login** starts ModelBridge when you sign in to your computer. Windows
   registers the current executable in your account's startup entries; macOS
   registers the app bundle as a user LaunchAgent. Keep the executable or app at
   its installed location. This option is off by default for new installations.
   Existing saved choices are preserved. Startup registration changes only when
-  you explicitly change this setting, not when Kobashi2 launches.
-- **Close to system tray** keeps Kobashi2 and its enabled bridges running when
-  you close the window and is enabled by default. Use **Show Kobashi2** from the
+  you explicitly change this setting, not when ModelBridge launches.
+- **Close to system tray** keeps ModelBridge and its enabled bridges running when
+  you close the window and is enabled by default. Use **Show ModelBridge** from the
   Windows system tray or macOS menu bar to reopen it. Turning this option off
-  makes closing the window quit Kobashi2 and restore client configurations.
+  makes closing the window quit ModelBridge and restore client configurations.
 - **Appearance** offers **Auto**, **Light**, and **Dark**. Auto follows the system
   appearance, including later system changes; Light and Dark override it. The
   selection is saved across launches. Appearance lives only in Settings, not
   in the main header. The login and tray options use label-only rows.
 
-Click the Settings icon again or **Done** to return to the main screen.
+Use **Back** to return to the main screen; Settings has no Done button.
+
+### Language and privacy
+
+Use **Language** in Settings to choose
+System Default or one of 13 locales: English, simplified/traditional Chinese,
+Japanese, Korean, German, French, Brazilian Portuguese, Spanish, Arabic, Hindi,
+Russian, and Vietnamese. Changes apply immediately and are saved across launches.
+**Privacy Statement** opens the bundled statement offline from the macOS app menu or Windows Settings.
 
 ### Local models on Mac
 
-On Apple Silicon with macOS 15 or later, choose **Add account**, then select a
-local model and click **Add**. The recommended model is selected automatically
+On Apple Silicon with macOS 15 or later, choose **Add a local model** from the account menu, select a
+model and click **Add**. The recommended model is selected automatically
 using the Mac's available memory: Qwen3-Coder 30B, then Qwen3 8B, then Qwen3 4B.
 Models meeting the total-memory requirement remain selectable for download
 even when other apps currently use too much memory. A warning asks you to free
 memory before starting; runtime memory limits still apply.
-**GitHub** opens the existing sign-in flow.
+**Add GitHub account** opens the device-authorization page, with Back to cancel.
 
-Kobashi2 checks existing installations before setup. A working oMLX runtime is
+ModelBridge checks existing installations before setup. A working oMLX runtime is
 reused after its version and required imports are verified, even if an earlier
 setup did not save its completion marker. Existing uv and compatible Python 3.12
 installations are reused; Python discovery runs offline before any download.
-Packages remain isolated in Kobashi2's own environment; system Python packages
+Packages remain isolated in ModelBridge's own environment; system Python packages
 are not modified. Verified download caches and completed model downloads are
 also reused. Only missing setup components are installed.
 
-Kobashi2 prepares its oMLX runtime and Python environment, downloads the model,
+ModelBridge prepares its oMLX runtime and Python environment, downloads the model,
 and prepares inference without asking for a Base URL, API key, or terminal command.
 Setup runs in the background with progress and cancellation. Installation labels
 show the current action out of six stages, such as
@@ -124,7 +131,7 @@ inference never falls back to a cloud model. Existing client logins are preserve
 Codex may need a full restart to reload its model picker after the first setup.
 Local Codex catalogs retain the supported `freeform` patch-tool type; `function`
 is not a valid `apply_patch_tool_type` and prevents the client from starting.
-For local Responses API requests, Kobashi2 translates Codex freeform tools into
+For local Responses API requests, ModelBridge translates Codex freeform tools into
 JSON functions with a string `input`, then restores custom tool calls and their
 streaming events. Tool history and results are translated for subsequent turns.
 Codex still executes `apply_patch` under its own sandbox and approval policy;
@@ -162,7 +169,7 @@ when selected. Recommendations do not overwrite existing manual choices.
 
 Releasing the slider saves and immediately applies the capacity to the running
 model through oMLX's authenticated settings API, without reselecting the account,
-restarting Kobashi2, reloading model weights, or interrupting current inference.
+restarting ModelBridge, reloading model weights, or interrupting current inference.
 The bridge verifies the effective runtime limit before publishing the new client
 budgets and Codex model catalog. **Restart Codex to apply** reminds you to restart
 Codex so it reloads its cached context budget, even when using the same model.
@@ -175,11 +182,11 @@ Windows and Intel Macs retain GitHub Copilot sources.
 
 ### Multiple accounts
 
-Open the arrow beside **Connected** to see saved GitHub accounts. The current
+Click anywhere on **Connected** or its arrow to see saved accounts. The current
 account has a green check. Click an account to switch; hover a row to reveal its
-**X** remove button. Keyboard focus also reveals the remove button. **Add account**
-appears below a divider and opens GitHub sign-in or access-token entry without
-disconnecting the current account. Cancel leaves that connection unchanged.
+**X** remove button. Keyboard focus also reveals the remove button. **Add GitHub account** and **Add a local model**
+appear below a divider. GitHub sign-in and local model setup open separate pages
+without disconnecting the current account. Cancel leaves that connection unchanged.
 Signing in again to the same username updates its saved credential, not the list
 count. Switching accounts preserves the Claude, Codex, and Copilot toggles.
 Signing in while inference is running saves the verified GitHub account without
@@ -209,8 +216,8 @@ gaps are all 16 logical pixels. Switching pages or updating status never resizes
 the window or moves the cards. Main-screen errors temporarily replace the header
 title, beside the Settings action, rather than reserving empty space.
 Mouse selection adds no thick row border; keyboard focus remains visible around
-the relevant control. The app icon uses two solid circles joined by a line.
-The macOS menu bar uses the same connection mark as a template icon, so macOS
+the relevant control. The app icon uses two outlined circles joined by a thin line.
+The macOS menu bar uses a solid connection mark as a template icon, so macOS
 controls its color for light, dark, and highlighted menu-bar states.
 Both themes use Pomegram berry-pink and coral-orange accents; active/connected indicators stay green, errors
 stay red, and paused/disconnected indicators stay neutral gray.
@@ -220,9 +227,9 @@ Bridge toggles show **Working...** in place of their row status without moving
 the layout. Successful actions show no extra notice; errors remain visible.
 Settings uses label-only login/tray rows and a native Appearance selector.
 
-To stop Kobashi2 while close to tray is enabled, select **Quit Kobashi2** in the
+To stop ModelBridge while close to tray is enabled, select **Quit ModelBridge** in the
 tray/menu-bar menu. Settings has no quit link. macOS also supports **Cmd-Q**,
-**Kobashi2 > Quit Kobashi2**, and **Dock > Quit**. Quitting stops the bridge process
+**ModelBridge > Quit ModelBridge**, and **Dock > Quit**. Quitting stops the bridge process
 and runs configuration cleanup; closing to tray does not restart the bridges.
 These desktop settings are available in both native applications.
 `--no-open` remains a headless launch and does not create a Windows
@@ -251,11 +258,11 @@ tray icon or register startup.
 
 ### GitHub Copilot app
 
-Keep the Copilot app signed in with account **A**, and connect Kobashi2 to an
-authorized Copilot account **B**, then enable **Copilot** in Kobashi2.
-No selected session is required. If the app is closed, Kobashi2 keeps the bridge
+Keep the Copilot app signed in with account **A**, and connect ModelBridge to an
+authorized Copilot account **B**, then enable **Copilot** in ModelBridge.
+No selected session is required. If the app is closed, ModelBridge keeps the bridge
 enabled and configures it automatically when the app starts. Enablement is
-preserved across Kobashi2 launches.
+preserved across ModelBridge launches.
 The bridge is off by default and does not require either of the other bridges.
 When off, its status reads **Paused**; when on, it reads **Active**.
 
@@ -265,9 +272,9 @@ It reads the provider and model back to verify that the app saved the
 configuration and credential.
 Its base URL is `http://127.0.0.1:18925/v1` (`18925 + N` with `--port-offset N`).
 The app stores the placeholder API key `PROXY_MANAGED` in its own credential
-store; Kobashi2 never sends its GitHub token to the app.
+store; ModelBridge never sends its GitHub token to the app.
 
-Kobashi2 keeps the session's current model if account B offers it; otherwise it
+ModelBridge keeps the session's current model if account B offers it; otherwise it
 selects the first compatible chat model from B's catalog. It uses the model's
 advertised Responses or Chat Completions protocol, including streaming and tool
 calls. Provider-qualified model IDs saved by the app are matched to their wire
@@ -282,10 +289,10 @@ viewing Settings, when no session is selected, or while a session is running.
 In those cases the bridge stays enabled, and local sessions connect automatically
 once eligible and idle. There is no need to turn the bridge off and on again.
 If you manually change a session's provider, model, reasoning effort, or context
-tier after it has been observed, Kobashi2 does not switch it back while enabled.
+tier after it has been observed, ModelBridge does not switch it back while enabled.
 New sessions explicitly using another custom provider are also left alone.
 Provisional warmup sessions are left untouched until the app finishes preparing
-them. Immediately before a switch or restoration, Kobashi2 also asks the app for
+them. Immediately before a switch or restoration, ModelBridge also asks the app for
 live runtime activity with recovery disabled; a database idle flag alone is not
 enough. Busy or unresponsive runtimes wait without being restarted.
 An explicit `idle_without_runtime` result with `is_running: false` is also safe:
@@ -300,21 +307,21 @@ changing the shared provider's default.
 The installed app does not expose an external API for setting the global
 new-session provider. Automatic connection uses supported per-session commands,
 not database writes. A session that starts work immediately may complete its
-first turn using its original provider; Kobashi2 waits until it is idle rather
+first turn using its original provider; ModelBridge waits until it is idle rather
 than interrupting it. **Active** means the bridge is enabled, not that every
 session is already routed through it.
 
 An unavailable control API, an incompatible app version, or a registration
-that cannot be verified produces an explicit error. Kobashi2 reads the app's
+that cannot be verified produces an explicit error. ModelBridge reads the app's
 selection database read-only; provider and model changes go through the app.
 A failed or unconfirmed session switch is reported without disabling an
 already registered bridge, so a late switch can still use its endpoint.
-If Copilot exits or disconnects before acknowledging a switch, Kobashi2 does not
+If Copilot exits or disconnects before acknowledging a switch, ModelBridge does not
 retry that switch automatically or claim it succeeded. Wait until the session
 is idle, then select **Kobashi** in its model picker to finish connecting. The
 original selection remains saved for safe restoration; detailed transport
 diagnostics are kept in `~/.kobashi/kobashi.log`.
-If the app's runtime stops responding before a provider switch, Kobashi2 leaves
+If the app's runtime stops responding before a provider switch, ModelBridge leaves
 it untouched. A successful provider registration cannot repair an unresponsive
 Copilot runtime or confirm that a first message reached it.
 
@@ -328,28 +335,28 @@ curl.exe --fail --silent --show-error -H "Authorization: Bearer PROXY_MANAGED" h
 
 A model list confirms connectivity and catalog access, not inference. Connection
 refusal means no listener is available at that address; `401` means the API key
-is wrong, the bridge is disabled, or Kobashi2 is not connected.
+is wrong, the bridge is disabled, or ModelBridge is not connected.
 
 Only requests routed through this provider use account B's model access and
 quota. GitHub repository operations, MCP connections, and other app features
 retain their existing authentication; cloud sessions do not use this local
 endpoint. Selecting a built-in GitHub-hosted model still uses the app's normal
-Copilot account. Kobashi2 does not alter the app's GitHub login or environment
-variables. Before automatically switching a session, Kobashi2 saves its original
+Copilot account. ModelBridge does not alter the app's GitHub login or environment
+variables. Before automatically switching a session, ModelBridge saves its original
 provider, model, reasoning effort, and context tier in
 `~/.kobashi/copilot-restore.json`. Disabling Copilot Bridge or disconnecting
-Kobashi2 first restores the local sessions that still use its provider, then
+ModelBridge first restores the local sessions that still use its provider, then
 stops accepting requests. User-selected replacements are left unchanged.
 If a dependent session is running, restoration fails, or its original selection
 was not saved by an older version, the bridge stays enabled and reports an
 error instead of breaking inference. Wait for the session to become idle, or
 select a non-Kobashi provider in that session, then try again.
 The provider remains registered; remove it in the app yourself if no longer
-needed. Restarting Kobashi2 resumes an enabled bridge and re-registers its provider
+needed. Restarting ModelBridge resumes an enabled bridge and re-registers its provider
 as needed. Saved original selections survive the restart, and previously managed
 sessions that the user moved to another provider are not switched back.
 
-The model catalog comes from Kobashi2's connected account, independently of
+The model catalog comes from ModelBridge's connected account, independently of
 Codex's model checks. Account B must be authorized for this use, and any code sent through it
 must comply with applicable organization policies and subscription terms.
 See [GitHub's BYOK setup documentation](https://docs.github.com/en/copilot/how-tos/github-copilot-app/use-byok-models).
@@ -357,15 +364,15 @@ See [GitHub's BYOK setup documentation](https://docs.github.com/en/copilot/how-t
 <!--
 ### Server and Client
 
-Kobashi2 defaults to the local GitHub-backed bridge. Both native applications also
+ModelBridge defaults to the local GitHub-backed bridge. Both native applications also
 support this connection:
 
 ```text
-Codex / Claude / Copilot app -> local Kobashi2 Client -> remote Kobashi2 Server -> GitHub Copilot
+Codex / Claude / Copilot app -> local ModelBridge Client -> remote ModelBridge Server -> GitHub Copilot
 ```
 
 On the **Server**, connect to GitHub and enable the bridges you want to share.
-Open **Settings > Share this Kobashi2**, set the listen IP and port, and select
+Open **Settings > Share this ModelBridge**, set the listen IP and port, and select
 **Enable Server**. The default is `0.0.0.0:18924`. A blank access token generates
 a private token on first use and keeps the existing token afterward. Use
 **Copy token** to give it to trusted clients. To change the token or listen
@@ -396,7 +403,7 @@ HTTP exposes prompts, outputs, and the access token to the network, so use it
 only on a trusted LAN. Clients accept plain HTTP only for literal private,
 link-local, or loopback IP addresses. For hostnames or public access, use
 **HTTPS** with a trusted certificate and a reverse proxy such as Caddy in front
-of a loopback-bound Server. URL path prefixes are supported. Kobashi2 does not
+of a loopback-bound Server. URL path prefixes are supported. ModelBridge does not
 disable certificate verification, follow remote redirects, or expose its
 management endpoints through the Server.
 
@@ -417,13 +424,13 @@ policy before sharing access.
 ### Codex login and plugin store
 
 Sign in to Codex with ChatGPT to use its plugin store. This account is separate
-from Kobashi2's GitHub connection. Kobashi2 preserves `~/.codex/auth.json` and uses
+from ModelBridge's GitHub connection. ModelBridge preserves `~/.codex/auth.json` and uses
 a non-secret provider-level bearer for inference, so ChatGPT credentials are not
-sent to Kobashi2 or GitHub Copilot. It does not set global OpenAI API credentials.
+sent to ModelBridge or GitHub Copilot. It does not set global OpenAI API credentials.
 The provider keeps `requires_openai_auth = true` so Codex can display the saved
 ChatGPT account; the explicit provider bearer still controls inference requests.
 
-Kobashi2 recovers a managed placeholder login from its saved `auth.json.bak`
+ModelBridge recovers a managed placeholder login from its saved `auth.json.bak`
 without replacing a newer login. If no usable backup exists, the app asks you to
 sign in to Codex again. User API keys, `CODEX_API_KEY`, and organization login
 policies are preserved; the plugin store requires Codex's active account to be
@@ -432,7 +439,7 @@ sign-in. Fully quit and reopen Codex yourself to load changed configuration.
 
 ### Codex model compatibility
 
-Kobashi2 refreshes the account's Copilot model directory and performs one online
+ModelBridge refreshes the account's Copilot model directory and performs one online
 validation round when a Codex client starts. Fully quit Codex and reopen it to
 force a fresh directory read and validation, even when the previous capability
 cache is unchanged. Closing a window alone may leave the client process running.
@@ -447,7 +454,7 @@ counted with their parent, and diagnostic queries such as `codex debug models`
 never count as a startup. The first bridge request can bootstrap discovery before
 the watcher sees the client, without causing a second validation round.
 
-On first setup (or an account switch with no verified cache), Kobashi2 prepares the
+On first setup (or an account switch with no verified cache), ModelBridge prepares the
 verified directory before injecting the Codex configuration. Open Codex after
 this preparation completes. On subsequent launches, the previous verified
 snapshot remains available while the new startup check runs; a network timeout
@@ -458,7 +465,7 @@ not reload its picker when that file or `config.toml` is rewritten. Therefore,
 new models, removed models, and new effort options found by a startup round are
 saved for the **next full Codex launch**; `/v1/models` reflects them as checks
 finish. If Codex was already open during first setup, fully quit and reopen it
-after preparation. Kobashi2 never restarts the client or interrupts a live turn.
+after preparation. ModelBridge never restarts the client or interrupts a live turn.
 
 New models are checked with a small, real streaming tool-call request
 before being published to the directory or `/v1/models`. HTTP 200 alone is
@@ -469,17 +476,17 @@ The same refresh reads the installed Codex client's native catalog. Ultra is a
 client delegation mode: its exact native model metadata and underlying API effort
 must both be supported. Models declaring Ultra or Multi-Agent V2 also require a
 real agent-message roundtrip: the API must generate a message and return its
-complete original payload when replayed. Until that check succeeds, Kobashi2
+complete original payload when replayed. Until that check succeeds, ModelBridge
 publishes V1 delegation without Ultra and retains the model's normal API efforts.
 A newly added native model or Ultra mode is discovered and verified automatically.
 A Copilot model absent from the native catalog can still
-appear with its advertised API efforts; Kobashi2 cannot invent a client mode that
+appear with its advertised API efforts; ModelBridge cannot invent a client mode that
 the installed Codex does not declare.
 
 Parameter compatibility is learned from explicit upstream validation responses.
 Supported alternatives for reasoning context, effort, summary, and text verbosity
 are applied without changing the selected model, conversation, or tools.
-If the upstream API explicitly rejects `service_tier`, Kobashi2 omits that field
+If the upstream API explicitly rejects `service_tier`, ModelBridge omits that field
 and caches the rejection for that model and account; it never substitutes another
 service tier. HTTP validation errors can be retried before returning the response.
 Streaming failures remain visible and update the rules for subsequent requests,
@@ -495,11 +502,11 @@ If the provider supplies no message, the bridge reports that explicitly rather
 than forwarding an unexplained failure. It never turns a failed stream into a
 successful completion or replays an already-started response. Failures are
 logged in `~/.kobashi/kobashi.log`. Encrypted agent content is forwarded unchanged.
-If Copilot cannot decrypt it, Kobashi2 reports the actual failure rather than
+If Copilot cannot decrypt it, ModelBridge reports the actual failure rather than
 discarding the message or presenting ciphertext as readable conversation text.
 An agent decryption failure also invalidates that model's cached Ultra/V2
 capability without removing ordinary inference. Explicit Codex feature overrides
-can still force V2; Kobashi2 does not change those overrides.
+can still force V2; ModelBridge does not change those overrides.
 Use a new V1 conversation without Ultra when this happens. Changing modes does
 not remove encrypted messages from an existing conversation's history.
 
@@ -521,7 +528,7 @@ startups invalidate late results from older rounds.
 
 ## Diagnostics
 
-Kobashi2 appends diagnostic logs to `~/.kobashi/kobashi.log`
+ModelBridge appends diagnostic logs to `~/.kobashi/kobashi.log`
 (`%USERPROFILE%\.kobashi\kobashi.log` on Windows). File logging also works when
 the native app has no console. Timestamps use local time with microsecond
 precision; startup records the time-zone offset, app version, platform, and PID.
@@ -590,7 +597,7 @@ and is embedded in the binaries
 and platform metadata without modifying source files. macOS packaging builds
 both Apple Silicon and Intel bridge binaries and a universal Cocoa executable.
 
-After a successful build, only `dist/Kobashi2.app` (macOS) or `dist/Kobashi2.exe`
+After a successful build, only `dist/ModelBridge.app` (macOS) or `dist/ModelBridge.exe`
 (Windows) and `dist/SHA256SUMS.txt` are published back to the checkout. The existing
 release for the other platform is preserved. `SHA256SUMS.txt` lists the Windows
 executable and each file inside the macOS app bundle. The complete bundle is
@@ -658,32 +665,32 @@ The lifecycle checks exercise the fixed window size, close-to-tray setting, menu
 restore entry, repeated restoration, minimization, and the termination callback.
 Actual menu-bar/Dock activation, Cmd-Q/Dock Quit delivery, and live
 inference continuity still need a hands-on macOS smoke test. Never stop a running
-Kobashi2 instance from an automated test.
+ModelBridge instance from an automated test.
 
 The opt-in `TestInstalledCopilotLiveChat` checks the real app's first-message
 path. Set `KOBASHI_TEST_COPILOT_LIVE_SESSION` to a newly created, unused,
 unselected disposable local chat ID. The check requires a saved authorized
-Kobashi2 account, an unused default Copilot port, and no existing sessions
-dependent on Kobashi2. It connects only that chat, sends `hi` through the app,
+ModelBridge account, an unused default Copilot port, and no existing sessions
+dependent on ModelBridge. It connects only that chat, sends `hi` through the app,
 requires a real reply through the bridge, and restores the original model.
 The first inference request must start within 15 seconds of sending `hi`;
 an eventual reply after a stalled send does not pass. Set
 `KOBASHI_TEST_COPILOT_DORMANT=1` to additionally require a confirmed
 `idle_without_runtime` starting state, separating cold startup from a live
 provider replacement.
-It never stops a running Kobashi2 or switches the user's selected chat. Archive
+It never stops a running ModelBridge or switches the user's selected chat. Archive
 the disposable chat after the check.
 
 If dispatch stalls, compare a separate unused chat using the app's built-in
-provider with Kobashi2 disabled. Distinguish time spent inside the app before
+provider with ModelBridge disabled. Distinguish time spent inside the app before
 `session.send` from bridge request and upstream response time. A slow built-in
 control does not waive the 15-second bridge check or establish a specific
 extension as the cause.
 
 For a safe hands-on check while your real bridge stays running, run
-`go run ./cmd/build -test-mac -smoke`. This opens **Kobashi2 Lifecycle Test (no bridge)** with a
+`go run ./cmd/build -test-mac -smoke`. This opens **ModelBridge Lifecycle Test (no bridge)** with a
 different bundle identifier, a counter, and a disposable child's PID. Close its
-window, wait, and select **Show Kobashi2** from its menu-bar icon: the counter
+window, wait, and select **Show ModelBridge** from its menu-bar icon: the counter
 should advance and the PID should stay the same. Repeat after minimizing and
 hiding. Quit **only the test
 app** with Cmd-Q; rerun to check Dock > Quit. The terminal confirms its child has

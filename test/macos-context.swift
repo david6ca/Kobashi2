@@ -86,7 +86,7 @@ class ContextCheckDelegate: AppDelegate {
               "Context loads on the main screen without navigating or stealing focus")
         check(slider.frame == NSRect(x: 50, y: 137, width: 299, height: 24) &&
               controls["usageLabel"]?.frame.minY == 120 &&
-              controls["codex"]?.frame.minY == 184 && controls["project"]?.frame.minY == footerY &&
+              controls["codex"]?.frame.minY == 109 && controls["project"] == nil &&
               window.contentView?.bounds.size == windowSize,
               "The slider occupies the token-usage area inside the original account card; client cards and footer stay fixed")
         check(slider.numberOfTickMarks == 6 && slider.integerValue == 2 &&
@@ -128,7 +128,7 @@ class ContextCheckDelegate: AppDelegate {
             render()
             check(slider.trackFillColor == NativeColors.current.accent &&
                   slider.frame.maxY <= 162 && window.contentView?.bounds.size == windowSize &&
-                  controls["project"]?.frame.minY == footerY,
+                  controls["project"] == nil,
                   "The \(appearance) slider uses the existing palette and stays inside the account card")
             capture(appearance)
         }
@@ -176,7 +176,7 @@ class ContextCheckDelegate: AppDelegate {
         check(requests.count == 2 && requests.last!.1["contextWindow"] as? Int == 131072 &&
               notice == "Could not save local context settings." && reportedErrors.count == 1 &&
               slider.integerValue == 3 && saved["qwen3-4b"] == 65536 &&
-              !(controls["notice"] as! NSTextField).isHidden && controls["title"]!.isHidden,
+              !(controls["notice"] as! NSTextField).isHidden && controls["title"] == nil,
               "A mouse drag saves once; failed saving preserves capacity and replaces the main title without shifting cards")
         refresh()
         later {
@@ -186,11 +186,11 @@ class ContextCheckDelegate: AppDelegate {
             self.failLoad = true
             self.loadLocalContext()
             self.later {
-                check(self.contextError == "Could not load local context settings." && self.controls["title"]!.isHidden,
+                check(self.contextError == "Could not load local context settings." && self.controls["title"] == nil,
                       "Context polling failures are visible without overlapping the main title")
                 self.loadLocalContext()
                 self.later {
-                    check(self.contextError.isEmpty && !self.controls["title"]!.isHidden,
+                    check(self.contextError.isEmpty && self.controls["title"] == nil,
                           "Recovered context polling clears only its own transport error")
                     self.checkSettingsAndCloud()
                 }
