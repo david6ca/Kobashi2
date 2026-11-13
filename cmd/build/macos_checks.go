@@ -94,7 +94,12 @@ func checkMacHarness(test string) error {
 		return err
 	}
 	executable := filepath.Join(app, "MacOS", "lifecycle-check")
-	if err = run(workspace, os.Environ(), "xcrun", "--toolchain", "XcodeDefault", "swiftc", "-module-cache-path", filepath.Join(workspace, "swift-module-cache"), "-framework", "Cocoa", filepath.Join(workspace, "main.swift"), "-o", executable); err != nil {
+	args := []string{"--toolchain", "XcodeDefault", "swiftc", "-module-cache-path", filepath.Join(workspace, "swift-module-cache"), "-framework", "Cocoa"}
+	if test == "macos-store-screenshots.swift" {
+		args = append(args, "-D", "APP_STORE")
+	}
+	args = append(args, filepath.Join(workspace, "main.swift"), "-o", executable)
+	if err = run(workspace, os.Environ(), "xcrun", args...); err != nil {
 		return err
 	}
 	return run(workspace, os.Environ(), executable)

@@ -85,6 +85,14 @@ struct NativeColors {
     static let brandPink = rgb(0xe94f76)
     static let brandOrange = rgb(0xff9166)
 
+    static func appStoreWhite(_ ordinary: NSColor) -> NSColor {
+        #if APP_STORE
+        return .white
+        #else
+        return ordinary
+        #endif
+    }
+
     static var usesGlass: Bool {
         !NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency &&
         !NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
@@ -281,7 +289,7 @@ final class FlippedView: GlassBackdropView {
             // if owner.status["authMethod"] as? String != "remote" {
             if owner.status["authMethod"] as? String == "local" {
                 NSImage(systemSymbolName: "desktopcomputer", accessibilityDescription: "Local")?.draw(in: directionalRect(NSRect(x: 28, y: 8, width: 16, height: 16), width: bounds.width))
-            } else { owner.drawArtwork("github", in: directionalRect(NSRect(x: 28, y: 8, width: 16, height: 16), width: bounds.width), tint: NativeColors.brandPink) }
+            } else { owner.drawArtwork("github", in: directionalRect(NSRect(x: 28, y: 8, width: 16, height: 16), width: bounds.width), tint: NativeColors.appStoreWhite(NativeColors.brandPink)) }
             // }
             if !owner.hasHeaderNotice, owner.status["authMethod"] as? String != "local", let (used, total) = owner.usageValues {
                 rounded(directionalRect(NSRect(x: 28, y: 66, width: 344, height: 5), width: bounds.width), radius: 3, fill: top.track, border: top.track)
@@ -471,7 +479,7 @@ class NativeButton: NSButton {
             rounded(directionalRect(NSRect(x: 10, y: 6, width: 32, height: 32), width: bounds.width), radius: 8, fill: c.tile, border: c.border)
             let iconSize: CGFloat = key == "claude" ? 20 : 24
             owner?.drawArtwork(key == "copilot" ? "github" : key, in: directionalRect(NSRect(x: 26 - iconSize / 2, y: 22 - iconSize / 2, width: iconSize, height: iconSize), width: bounds.width),
-                               tint: key == "claude" ? NativeColors.rgb(0xd97757) : key == "copilot" ? c.accent : c.text)
+                               tint: key == "claude" ? NativeColors.rgb(0xd97757) : key == "copilot" ? NativeColors.appStoreWhite(c.accent) : c.text)
             nativeText(title, in: directionalRect(NSRect(x: 54, y: 2, width: 180, height: 18), width: bounds.width), font: .systemFont(ofSize: 12), color: c.muted)
             let on = state == .on
             let statusColor = on ? c.connected : c.disconnected
@@ -1500,7 +1508,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         // let prefix = status["authMethod"] as? String == "remote" ? "Server: " : "@"
         let prefix = status["authMethod"] as? String == "local" ? "" : "@"
         setLabel("account", "\(prefix)\(status["username"] as? String ?? "")")
-        (controls["account"] as? NSTextField)?.textColor = NativeColors.brandPink
+        (controls["account"] as? NSTextField)?.textColor = NativeColors.appStoreWhite(NativeColors.brandPink)
         (controls["settingsTitle"] as? NSTextField)?.textColor = colors.text
         (controls["addAccountTitle"] as? NSTextField)?.textColor = colors.text
         (controls["githubDeviceTitle"] as? NSTextField)?.textColor = colors.text

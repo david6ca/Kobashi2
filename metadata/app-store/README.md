@@ -53,3 +53,9 @@ Apple references checked for this preparation: [App Review Guidelines](https://d
 ## UI-ready GTM batch — 2026-11-13
 
 The user confirmed the UI is ready and requested screenshot capture, App Store GTM preparation, commit and push. The updated capture pipeline uses an independent no-bridge preview and WindowServer screenshots of only its windows, preserves native chrome and aspect ratio, and produces 26 RGB 2560×1600 PNGs for 13 locales. Privacy/support pages are live at the independent Pages site; no DNS was changed. The ordinary running app is not restarted.
+
+## Current store preparation — 2026-11-13
+
+All 13 listing localizations and support URLs are saved in App Store Connect. The public privacy policy URL is saved. The user-approved App Privacy label is published: linked User ID for App Functionality, linked Photos/Videos and Other User Content for App Functionality and Other Purposes, with no tracking. The age questionnaire is saved as 4+, pricing is free, and availability covers 175 territories after release. Manual release remains selected; no App Review submission has been made.
+
+The user selected official white GitHub marks for the App Store variant and white header account text. The 26 local screenshots have been regenerated using APP_STORE controls and synthetic data; they supersede the previously saved pink-mark gallery. Remote gallery replacement and the matching build upload remain pending. The ordinary running app is unchanged. Earlier build 2 exported successfully but is superseded by this UI change and must not be uploaded. Final content-rights answers and real client-folder/provider acceptance remain outstanding before submission.

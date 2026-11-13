@@ -211,3 +211,6 @@
 - Settings、本地模型添加页和 GitHub 添加页的返回标题行使用相同的 13 pt regular 字体，与主页账户名同处 y=8 pt。两页正文采用 24 pt 左右和底部边距。正文选项、picker、主页客户端名称及 Active/Paused 均为 12 pt；名称与状态采用紧凑行间距。
 
 - GitHub 添加页为 400×232 pt，返回标题行与账户行同高；授权码卡片左右边距 24 pt、内部边距 16 pt，包含授权码、Copy 和等待/错误状态。不显示 token 输入或提交按钮；GitHub 链接左对齐，生成授权码不会自动打开浏览器，取消后忽略迟到响应。所有 GitHub 添加状态均使用 ‹ 返回，不显示 X。
+
+- 用户于 2026-11-13 决定 App Store 版 GitHub 图标使用官方黑／白；当前深色账号区与 client surface 使用白色，普通版原有配色不变。App Store 截图用同一 APP_STORE UI 编译条件捕获。
+- 用户补充 App Store 版顶部账号名也使用白色（account_1 行）；普通版保留现有配色。
