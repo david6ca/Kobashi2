@@ -1,0 +1,43 @@
+{
+  "appName": "ModelBridge",
+  "appId": "6833990021",
+  "bundleId": "com.pomegram.modelbridge",
+  "teamId": "5QT5FT4PVP",
+  "version": "2.2.1",
+  "build": "4",
+  "sourceCommit": "f54e43fba8f5890cc2452e750db56177eaf36b4a",
+  "sourcePushedTo": "origin/main",
+  "sourcePushVerifiedBeforeUpload": true,
+  "mainAtUpload": "f54e43fba8f5890cc2452e750db56177eaf36b4a",
+  "uploadSucceeded": true,
+  "appleStateAtUpload": "PROCESSING",
+  "deliveryUUID": "dfa28304-ca94-4f1f-b064-d0be482e604f",
+  "appleUploadReceipt": "UPLOAD SUCCEEDED with no errors",
+  "uploadCompletedAt": "2026-11-13T17:16:22+08:00",
+  "uploadTool": "Xcode CLI altool",
+  "appSandbox": true,
+  "runtimeBundled": true,
+  "packageSignatureVerified": true,
+  "distributionCodeIdentityVerified": true,
+  "selfTestPassed": true,
+  "nativeAcceptance": {
+    "clientFolderGrants": [
+      "codex",
+      "claude",
+      "copilot"
+    ],
+    "bookmarkSurvivedHelperRestart": true,
+    "realModel": "qwen3-4b",
+    "streamingToolCallAndResult": [
+      "Codex",
+      "Claude",
+      "Copilot"
+    ],
+    "temporaryClientConfigurationsRestored": true,
+    "localModelChipVisible": true,
+    "localSliderBottomMarginPt": 20
+  },
+  "mainInstalledAppReplaced": false,
+  "reviewSubmitted": false,
+  "verificationStoppedAtProcessing": true
+}

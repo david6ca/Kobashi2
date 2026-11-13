@@ -2,7 +2,7 @@
   "status": "app_store_connect_draft",
   "productName": "ModelBridge",
   "platform": "MAC_OS",
-  "version": "2.2.1",
+  "version": "1.0",
   "bundleId": "com.pomegram.modelbridge",
   "primaryCategoryRecommendation": "DEVELOPER_TOOLS",
   "supportURL": "https://modelbridge-ev3.pages.dev/en/support/",
@@ -263,9 +263,9 @@
   "screenshotStatus": "current_app_store_white_ui_saved_2026_11_13",
   "remoteScreenshotNote": "All 13 locales have two custom screenshots named 804539a-<product-locale>-*.png, showing white App Store GitHub marks and header account text.",
   "appStoreSandboxAuthorized": true,
-  "candidateVersion": "2.2.1",
-  "candidateBuild": "3",
-  "candidateStatus": "uploaded_processing",
+  "candidateVersion": "1.0",
+  "candidateBuild": "5",
+  "candidateStatus": "source_prepared_for_1_0",
   "screenshotCaptureMethod": "WindowServer native window capture with preserved aspect ratio and window chrome",
   "remoteScreenshotAssignments": {
     "en-US": 2,
@@ -282,13 +282,13 @@
     "ru": 2,
     "vi": 2
   },
-  "candidateSourceCommit": "804539ad40414ada04a67317340420097567bfdd",
   "appPrivacyStatus": "published_user_approved",
   "ageRating": "4+",
   "price": "free",
   "availableTerritoryCount": 175,
   "releaseMode": "manual",
-  "contentRightsStatus": "not_answered",
+  "contentRightsStatus": "saved_uses_third_party_content_with_rights_user_approved",
   "reviewSubmitted": false,
-  "buildUploadReceipt": "build3-upload.json"
+  "buildUploadReceipt": "build4-upload.json",
+  "latestUploadedBuildReceipt": "build4-upload.json"
 }

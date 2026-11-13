@@ -12,6 +12,9 @@ source.mkdir(exist_ok=True)
 for name in ['cmd','internal','macos','scripts','assets']:
     shutil.copytree(root/name,source/name,dirs_exist_ok=True,ignore=shutil.ignore_patterns('__pycache__','xcuserdata','*.xcuserstate'))
 for name in ['go.mod','go.sum','package.json']:shutil.copyfile(root/name,source/name)
+store_metadata=source/'metadata/app-store/metadata.json'
+store_metadata.parent.mkdir(parents=True,exist_ok=True)
+shutil.copyfile(root/'metadata/app-store/metadata.json',store_metadata)
 store=source/'macos/app-store'
 if not (store/'Runtime/runtime-manifest.json').exists():
     subprocess.run(['python3',str(root/'scripts/prepare-app-store-runtime.py'),'--venv',a.runtime_venv,'--output',str(store/'Runtime')],check=True)
@@ -19,7 +22,7 @@ if not (store/'Runtime/runtime-manifest.json').exists():
 iconset=output/'AppIcon.iconset'
 subprocess.run(['xcrun','--toolchain','XcodeDefault','swift','-module-cache-path',str(output/'swift-cache'),str(source/'macos/icon.swift'),str(source/'assets/kobashi-icon.png'),str(iconset)],check=True)
 subprocess.run(['/usr/bin/iconutil','-c','icns',str(iconset),'-o',str(store/'AppIcon.icns')],check=True)
-version=json.loads((source/'package.json').read_text())['version']
+version=json.loads(store_metadata.read_text())['version']
 project=store/'ModelBridge.xcodeproj';archive=output/'ModelBridge.xcarchive'
 command=['xcodebuild','-project',str(project),'-scheme','ModelBridge','-configuration','Release','-destination','generic/platform=macOS','-archivePath',str(archive),'-derivedDataPath',str(output/'DerivedData'),'DEVELOPMENT_TEAM='+a.team,'MARKETING_VERSION='+version,'CURRENT_PROJECT_VERSION='+a.build,'-allowProvisioningUpdates','archive']
 if a.unsigned:command+=['CODE_SIGNING_ALLOWED=NO']
