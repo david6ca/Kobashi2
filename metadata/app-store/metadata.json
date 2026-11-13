@@ -265,7 +265,7 @@
   "appStoreSandboxAuthorized": true,
   "candidateVersion": "1.0",
   "candidateBuild": "5",
-  "candidateStatus": "source_prepared_for_1_0",
+  "candidateStatus": "uploaded_processing",
   "screenshotCaptureMethod": "WindowServer native window capture with preserved aspect ratio and window chrome",
   "remoteScreenshotAssignments": {
     "en-US": 2,
@@ -289,6 +289,7 @@
   "releaseMode": "manual",
   "contentRightsStatus": "saved_uses_third_party_content_with_rights_user_approved",
   "reviewSubmitted": false,
-  "buildUploadReceipt": "build4-upload.json",
-  "latestUploadedBuildReceipt": "build4-upload.json"
+  "buildUploadReceipt": "build5-upload.json",
+  "latestUploadedBuildReceipt": "build5-upload.json",
+  "candidateSourceCommit": "94c3ef5d9ba869447a133c9d1be45194d1b7ce33"
 }

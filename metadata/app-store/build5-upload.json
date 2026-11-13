@@ -1,0 +1,45 @@
+{
+  "appName": "ModelBridge",
+  "appId": "6833990021",
+  "bundleId": "com.pomegram.modelbridge",
+  "teamId": "5QT5FT4PVP",
+  "version": "1.0",
+  "build": "5",
+  "sourceCommit": "94c3ef5d9ba869447a133c9d1be45194d1b7ce33",
+  "sourcePushedTo": "origin/main",
+  "sourcePushVerifiedBeforeUpload": true,
+  "mainAtUpload": "94c3ef5d9ba869447a133c9d1be45194d1b7ce33",
+  "uploadSucceeded": true,
+  "appleStateAtUpload": "PROCESSING",
+  "deliveryUUID": "544d977c-c9c0-4f8a-8ef5-d9ab297bf437",
+  "appleUploadReceipt": "UPLOAD SUCCEEDED with no errors",
+  "uploadCompletedAt": "2026-11-13T18:32:14+08:00",
+  "uploadTool": "Xcode CLI altool",
+  "appSandbox": true,
+  "runtimeBundled": true,
+  "packageSignatureVerified": true,
+  "distributionCodeIdentityVerified": true,
+  "selfTestPassed": true,
+  "nativeAcceptanceReusedFrom": "f54e43fba8f5890cc2452e750db56177eaf36b4a",
+  "nativeAcceptance": {
+    "clientFolderGrants": [
+      "codex",
+      "claude",
+      "copilot"
+    ],
+    "bookmarkSurvivedHelperRestart": true,
+    "realModel": "qwen3-4b",
+    "streamingToolCallAndResult": [
+      "Codex",
+      "Claude",
+      "Copilot"
+    ],
+    "temporaryClientConfigurationsRestored": true,
+    "localModelChipVisible": true,
+    "localSliderBottomMarginPt": 20
+  },
+  "contentRightsSaved": true,
+  "mainInstalledAppReplaced": false,
+  "reviewSubmitted": false,
+  "verificationStoppedAtProcessing": true
+}
