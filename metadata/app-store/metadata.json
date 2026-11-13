@@ -265,7 +265,7 @@
   "appStoreSandboxAuthorized": true,
   "candidateVersion": "2.2.1",
   "candidateBuild": "3",
-  "candidateStatus": "archived_export_in_progress_not_uploaded",
+  "candidateStatus": "uploaded_processing",
   "screenshotCaptureMethod": "WindowServer native window capture with preserved aspect ratio and window chrome",
   "remoteScreenshotAssignments": {
     "en-US": 2,
@@ -289,5 +289,6 @@
   "availableTerritoryCount": 175,
   "releaseMode": "manual",
   "contentRightsStatus": "not_answered",
-  "reviewSubmitted": false
+  "reviewSubmitted": false,
+  "buildUploadReceipt": "build3-upload.json"
 }

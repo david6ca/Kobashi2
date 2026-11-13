@@ -24,14 +24,13 @@ Privacy/support pages are live at `https://modelbridge-ev3.pages.dev/<product-lo
 
 The user explicitly authorized an independent App Store App Sandbox variant. The ordinary running Applications app is unchanged and is not restarted by this workflow. App Store UI uses white GitHub marks and white header account text; the ordinary variant retains its existing colors.
 
-`scripts/build-app-store.py` snapshots source outside the checkout, bundles standalone Python 3.12.12/oMLX 0.7.3 and dependencies, and uses Xcode CLI archive/export with the existing Apple account. Build `2.2.1 (3)` was archived from source commit `804539ad40414ada04a67317340420097567bfdd`, verified pushed to `origin/main` before build preparation. Signature verification and independent runtime/isolated bridge self-test passed; export is in progress. No build is uploaded. Earlier exported builds 1 and 2 are superseded and must not be uploaded.
+`scripts/build-app-store.py` snapshots source outside the checkout, bundles standalone Python 3.12.12/oMLX 0.7.3 and dependencies, and uses Xcode CLI archive/export with the existing Apple account. Build `2.2.1 (3)` was archived from source commit `804539ad40414ada04a67317340420097567bfdd`, verified pushed to `origin/main` before build preparation. Signature verification, independent runtime/isolated bridge self-test and Xcode export passed. Xcode CLI altool uploaded the signed package successfully at 2026-11-13 15:23:21 (Asia/Shanghai). Apple buildUploads reported PROCESSING with no errors or warnings; build verification stopped at that point. See `build3-upload.json` for the exact source commit and delivery receipt. No App Review submission was made. Earlier exported builds 1 and 2 are superseded and must not be uploaded.
 
 App Store clients initially remain Paused until the user grants access to the relevant configuration folder through NSOpenPanel/security-scoped bookmarks. Start at login uses SMAppService. Python/oMLX runtime code is bundled; only model data is downloaded after installation. App Store boundary tests and the prior candidate runtime/isolated bridge self-test passed. Real client-folder grants and provider inference remain unverified.
 
 ## Remaining submission dependencies
 
 - Complete the content-rights declaration against the app's third-party service/content permissions. Official GitHub white marks replace the previously modified color.
-- Finish the matching build export/self-test; any authorized upload must record its exact pushed source commit. Stop build verification when Apple reports processing.
 - Accept real client-folder grants and provider inference on the final candidate, and verify export-compliance answers for its bundled dependencies.
 - App Review submission and public release require their own authorization.
 
