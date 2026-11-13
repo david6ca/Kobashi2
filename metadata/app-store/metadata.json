@@ -260,15 +260,34 @@
     "ru",
     "vi"
   ],
-  "screenshotStatus": "current_ui_captured_2026_11_13",
-  "remoteScreenshotAssignmentsAtPause": {
-    "en-US": 2,
-    "zh-Hans": 4
-  },
-  "remoteScreenshotNote": "Simplified Chinese has duplicate assignments after a delayed upload retry. Further screenshot upload, replacement and cleanup are paused by the user.",
+  "screenshotStatus": "current_app_store_white_ui_saved_2026_11_13",
+  "remoteScreenshotNote": "All 13 locales have two custom screenshots named 804539a-<product-locale>-*.png, showing white App Store GitHub marks and header account text.",
   "appStoreSandboxAuthorized": true,
   "candidateVersion": "2.2.1",
-  "candidateBuild": "1",
-  "candidateStatus": "archived_exported_not_uploaded",
-  "screenshotCaptureMethod": "WindowServer native window capture with preserved aspect ratio and window chrome"
+  "candidateBuild": "3",
+  "candidateStatus": "archived_export_in_progress_not_uploaded",
+  "screenshotCaptureMethod": "WindowServer native window capture with preserved aspect ratio and window chrome",
+  "remoteScreenshotAssignments": {
+    "en-US": 2,
+    "zh-Hans": 2,
+    "zh-Hant": 2,
+    "ja": 2,
+    "ko": 2,
+    "de-DE": 2,
+    "fr-FR": 2,
+    "pt-BR": 2,
+    "es-ES": 2,
+    "ar-SA": 2,
+    "hi": 2,
+    "ru": 2,
+    "vi": 2
+  },
+  "candidateSourceCommit": "804539ad40414ada04a67317340420097567bfdd",
+  "appPrivacyStatus": "published_user_approved",
+  "ageRating": "4+",
+  "price": "free",
+  "availableTerritoryCount": 175,
+  "releaseMode": "manual",
+  "contentRightsStatus": "not_answered",
+  "reviewSubmitted": false
 }
