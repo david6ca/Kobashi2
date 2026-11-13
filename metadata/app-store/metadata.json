@@ -311,13 +311,17 @@
     "readyForUserSubmission": false,
     "privacyPolicyURLsSavedAndReadBack": 13,
     "remainingAppleValidation": [
-      "A build must be selected"
+      "Export compliance for standard encryption outside Apple OS when distributing in France"
     ],
     "targetBuild": "1.0 (5)",
-    "targetBuildSelectable": false,
-    "latestObservedUploadState": "PROCESSING",
+    "targetBuildSelectable": true,
+    "latestObservedUploadState": "COMPLETE",
     "reviewSubmitted": false,
     "finalSubmissionOwner": "user",
-    "releaseMode": "manual"
+    "releaseMode": "manual",
+    "buildAttached": true,
+    "buildProcessingState": "VALID",
+    "buildAudienceType": "APP_STORE_ELIGIBLE",
+    "exportComplianceDecisionPending": true
   }
 }

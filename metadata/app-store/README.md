@@ -32,7 +32,7 @@ App Store clients initially remain Paused until the user grants access to the re
 
 A fresh Apple submission check found missing localized privacy-policy URLs. All 13 locale URLs were then saved and read back after reloading the server-backed page. Re-running Add for Review validation now reports only “A build must be selected.” The published App Privacy data declarations were unchanged.
 
-The requested target 1.0 (5) remains PROCESSING in buildUploads with no errors/warnings and is not yet available in the version's build picker. Older 2.2.1 (3)/(4) builds were not selected. Metadata is prepared, but the version is not ready for user submission until Apple finishes processing: attach 1.0 (5), complete its build-specific export-compliance step if requested, and stage the version for review. Final App Review submission and public manual release are reserved for the user. No App Review submission or public release was performed.
+On the user's new readiness request, Apple reported 1.0 (5) COMPLETE / VALID / APP_STORE_ELIGIBLE. The correct build was attached and saved to the 1.0 draft. The remaining requirement is build-specific export compliance. The app includes Go/Python standard TLS outside Apple's OS implementation. Selecting standard encryption and the existing France availability makes Apple's questionnaire require French encryption documentation. No inaccurate “none of these algorithms” answer was saved. The user is choosing whether to retain France and supply documentation or exclude France from initial availability; French localization is retained either way. Final App Review submission and public manual release remain reserved for the user.
 
 ## Focused validation
 
