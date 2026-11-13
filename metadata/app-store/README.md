@@ -18,7 +18,7 @@ Product locales: `en`, `zh-Hans`, `zh-Hant`, `ja`, `ko`, `de`, `fr`, `pt-BR`, `e
 
 All 13 localized names/subtitles, promotional text, descriptions, keywords and support URLs are saved. Each locale has two custom screenshots named `804539a-<locale>-*.png`; these replace the old pink GitHub mark/account-text gallery. Capture uses the actual APP_STORE native controls with synthetic data, preserved native chrome and aspect ratio. They do not prove authenticated provider access.
 
-Privacy/support pages are live at `https://modelbridge-ev3.pages.dev/<product-locale>/privacy/` and `/support/`. The public privacy policy URL is saved. The user-approved App Privacy label is published: linked User ID for App Functionality; linked Photos/Videos and Other User Content for App Functionality and Other Purposes; no tracking. The age questionnaire is saved as 4+, pricing is free, and 175 territories are selected for availability after release. Review contact and preparation notes are saved privately in Apple. Release mode is manual. No App Review submission has been made.
+Privacy/support pages are live at `https://modelbridge-ev3.pages.dev/<product-locale>/privacy/` and `/support/`. The public privacy policy URL is saved. The user-approved App Privacy label is published: linked User ID for App Functionality; linked Photos/Videos and Other User Content for App Functionality and Other Purposes; no tracking. The age questionnaire is saved as 4+, pricing is free, and 174 territories are selected for availability after release, with France excluded at the user's request. Review contact and preparation notes are saved privately in Apple. Release mode is manual. No App Review submission has been made.
 
 ## App Store candidate
 
@@ -32,7 +32,9 @@ App Store clients initially remain Paused until the user grants access to the re
 
 A fresh Apple submission check found missing localized privacy-policy URLs. All 13 locale URLs were then saved and read back after reloading the server-backed page. Re-running Add for Review validation now reports only “A build must be selected.” The published App Privacy data declarations were unchanged.
 
-On the user's new readiness request, Apple reported 1.0 (5) COMPLETE / VALID / APP_STORE_ELIGIBLE. The correct build was attached and saved to the 1.0 draft. The remaining requirement is build-specific export compliance. The app includes Go/Python standard TLS outside Apple's OS implementation. Selecting standard encryption and the existing France availability makes Apple's questionnaire require French encryption documentation. No inaccurate “none of these algorithms” answer was saved. The user is choosing whether to retain France and supply documentation or exclude France from initial availability; French localization is retained either way. Final App Review submission and public manual release remain reserved for the user.
+Apple reported 1.0 (5) COMPLETE / VALID / APP_STORE_ELIGIBLE. The correct build was attached and saved to the 1.0 draft. The user explicitly chose to exclude France from initial availability; the saved availability count is 174, with French UI/listing localization retained. Export compliance was answered accurately as standard encryption outside Apple's OS implementation and no France distribution. Apple accepted the response and removed the missing-compliance status; no French documentation was required for this selected launch scope.
+
+Add for Review validation passed. Version 1.0 now displays “Ready for Review” and is included as the sole item in a draft submission with build 1.0 (5). The embedded browser is left at the enabled final “Submit for Review” button. It was not clicked. The user owns final App Review submission; after approval, public release is manual. No further source build or upload is needed for these saved metadata/availability changes. Revisit export compliance before adding France in a future release.
 
 ## Focused validation
 
