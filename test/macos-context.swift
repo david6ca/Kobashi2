@@ -13,7 +13,7 @@ class ContextCheckDelegate: AppDelegate {
     var failLoad = false
     var reportedErrors: [String] = []
     var fixture: [String: Any] = ["ready": true, "connected": true, "localModel": "qwen3-4b",
-                                  "authMethod": "local", "username": "Qwen3 4B", "version": "test"]
+                                  "authMethod": "local", "username": "Qwen3 4B", "version": "test", "language": "en"]
 
     override func applicationDidFinishLaunching(_ notification: Notification) {
         check(createWindow(), "The isolated context window loads without a bridge")
@@ -84,11 +84,11 @@ class ContextCheckDelegate: AppDelegate {
         check(currentView == "connected" && window.firstResponder === controls["settings"] &&
               slider.isEnabled && !slider.isHidden,
               "Context loads on the main screen without navigating or stealing focus")
-        check(slider.frame == NSRect(x: 50, y: 137, width: 299, height: 24) &&
-              controls["usageLabel"]?.frame.minY == 120 &&
-              controls["codex"]?.frame.minY == 109 && controls["project"] == nil &&
-              window.contentView?.bounds.size == windowSize,
-              "The slider occupies the token-usage area inside the original account card; client cards and footer stay fixed")
+        check(slider.frame.height == 24 && homeGlassY - slider.frame.maxY == 20 &&
+              controls["usageLabel"]?.frame.minY == 42 &&
+              controls["codex"]!.frame.minY > homeGlassY && controls["project"] == nil &&
+              controls["copilot"]!.frame.maxY + 18 == window.contentView!.bounds.height,
+              "The local slider has 20pt bottom padding and client rows keep their bottom margin")
         check(slider.numberOfTickMarks == 6 && slider.integerValue == 2 &&
               !slider.isContinuous && slider.allowsTickMarkValuesOnly,
               "The native slider uses discrete capacities and saves only committed changes")
@@ -127,7 +127,8 @@ class ContextCheckDelegate: AppDelegate {
             status["appearance"] = appearance
             render()
             check(slider.trackFillColor == NativeColors.current.accent &&
-                  slider.frame.maxY <= 162 && window.contentView?.bounds.size == windowSize &&
+                  homeGlassY - slider.frame.maxY == 20 &&
+                  controls["copilot"]!.frame.maxY + 18 == window.contentView!.bounds.height &&
                   controls["project"] == nil,
                   "The \(appearance) slider uses the existing palette and stays inside the account card")
             capture(appearance)
@@ -215,7 +216,7 @@ class ContextCheckDelegate: AppDelegate {
         render()
         check(slider.isHidden && !slider.canBecomeKeyView && window.firstResponder !== slider &&
               (controls["usageLabel"] as! NSTextField).stringValue == "AI credits this cycle" &&
-              usageText == "25 / 100" && controls["usageLabel"]?.frame.minY == 128,
+              usageText == "25 / 100" && controls["usageLabel"]?.frame.minY == 42,
               "GitHub accounts retain normal credit usage and remove the local slider from focus navigation")
         check(requests.allSatisfy { $0.0 == "/api/local/context" },
               "Context interaction uses the context API without reselecting accounts or restarting apps")

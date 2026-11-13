@@ -66,6 +66,8 @@ let addAccountWindowSize = NSSize(width: 400, height: 212)
 let githubDeviceWindowSize = NSSize(width: 400, height: 232)
 let footerY: CGFloat = 356
 let mainGlassY: CGFloat = 91
+let localContextSliderFrame = NSRect(x: 28, y: 64, width: 344, height: 24)
+let localContextBottomMargin: CGFloat = 20
 let homeMargin: CGFloat = 28
 let windowControlTop: CGFloat = 20
 let settingsGlyphTop: CGFloat = 20
@@ -284,11 +286,11 @@ final class FlippedView: GlassBackdropView {
         switch owner.currentView {
         case "connected":
             NSColor.black.setFill()
-            NSRect(x: 0, y: 0, width: bounds.width, height: mainGlassY).fill()
+            NSRect(x: 0, y: 0, width: bounds.width, height: owner.homeGlassY).fill()
             let top = NativeColors.onBlack
             // if owner.status["authMethod"] as? String != "remote" {
             if owner.status["authMethod"] as? String == "local" {
-                NSImage(systemSymbolName: "desktopcomputer", accessibilityDescription: "Local")?.draw(in: directionalRect(NSRect(x: 28, y: 8, width: 16, height: 16), width: bounds.width))
+                owner.drawArtwork("local", in: directionalRect(NSRect(x: 28, y: 8, width: 16, height: 16), width: bounds.width), tint: NativeColors.appStoreWhite(NativeColors.brandPink))
             } else { owner.drawArtwork("github", in: directionalRect(NSRect(x: 28, y: 8, width: 16, height: 16), width: bounds.width), tint: NativeColors.appStoreWhite(NativeColors.brandPink)) }
             // }
             if !owner.hasHeaderNotice, owner.status["authMethod"] as? String != "local", let (used, total) = owner.usageValues {
@@ -438,7 +440,12 @@ class NativeButton: NSButton {
                         c.connected.setStroke()
                         tick.stroke()
                     }
-                    nativeText(title, in: directionalRect(NSRect(x: 30, y: 9, width: bounds.width - 34, height: 22), width: bounds.width),
+                    let local = row.username.hasPrefix("local:")
+                    if local {
+                        row.owner?.drawArtwork("local", in: directionalRect(NSRect(x: 30, y: 10, width: 16, height: 16), width: bounds.width), tint: fg)
+                    }
+                    let textX: CGFloat = local ? 54 : 30
+                    nativeText(title, in: directionalRect(NSRect(x: textX, y: 9, width: bounds.width - textX - 4, height: 22), width: bounds.width),
                                font: .systemFont(ofSize: 13), color: fg)
                 } else if row.highlighted || focused {
                     let cross = NSBezierPath()
@@ -955,6 +962,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
     }
 
     @discardableResult func createWindow(show: Bool = true) -> Bool {
+        artwork["local"] = NSImage(systemSymbolName: "cpu", accessibilityDescription: nil)
         for name in ["kobashi-icon", "github", "claude", "codex"] {
             guard let url = Bundle.main.url(forResource: name, withExtension: "png"),
                   let image = NSImage(contentsOf: url) else {
@@ -1032,7 +1040,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         contextSlider.isContinuous = false
         contextSlider.allowsTickMarkValuesOnly = true
         contextSlider.setAccessibilityLabel("Context window")
-        add(contextSlider, key: "contextSlider", group: "connected", y: 64, height: 24, x: 28, width: 344)
+        add(contextSlider, key: "contextSlider", group: "connected", y: localContextSliderFrame.minY, height: localContextSliderFrame.height, x: localContextSliderFrame.minX, width: localContextSliderFrame.width)
         checkbox("Codex", key: "codex", group: "connected", y: 109, height: 44, action: #selector(toggleCodex), x: 18, width: 364)
         checkbox("Claude Code", key: "claude", group: "connected", y: 153, height: 44, action: #selector(toggleClaude), x: 18, width: 364)
         checkbox("GitHub Copilot", key: "copilot", group: "connected", y: 197, height: 44, action: #selector(toggleCopilot), x: 18, width: 364)
@@ -1405,6 +1413,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
             (status["authMethod"] as? String == "local" && !contextError.isEmpty))
     }
 
+    var homeGlassY: CGFloat {
+        status["authMethod"] as? String == "local" ? localContextSliderFrame.maxY + localContextBottomMargin : mainGlassY
+    }
+
     func render() {
         if layoutIsRTL {
             for (key, view) in controls where key != "settings" { view.frame = NSRect(x: 400 - view.frame.maxX, y: view.frame.minY, width: view.frame.width, height: view.frame.height) }
@@ -1424,7 +1436,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
             selector.selectItem(at: selector.itemArray.firstIndex { $0.representedObject as? String == L10n.selection } ?? 0)
             selector.isEnabled = !busy && !terminating
         }
-        let size = currentView == "connected" ? homeWindowSize :
+        let homeOffset = homeGlassY - mainGlassY
+        let connectedSize = NSSize(width: homeWindowSize.width, height: homeWindowSize.height + homeOffset)
+        let size = currentView == "connected" ? connectedSize :
             currentView == "settings" ? settingsWindowSize :
             currentView == "device" ? githubDeviceWindowSize :
             currentView == "add-account" ? addAccountWindowSize : windowSize
@@ -1433,7 +1447,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
             window.setContentSize(size)
             window.setFrameTopLeftPoint(NSPoint(x: window.frame.minX, y: top))
         }
-        (window.contentView as? GlassBackdropView)?.setGlassTopInset(currentView == "connected" ? mainGlassY : 0)
+        (window.contentView as? GlassBackdropView)?.setGlassTopInset(currentView == "connected" ? homeGlassY : 0)
+        for (key, y) in [("codex", 109), ("claude", 153), ("copilot", 197)] {
+            controls[key]?.frame.origin.y = CGFloat(y) + homeOffset
+        }
         controls["connect"]?.frame.origin.y = 160
         let noticeFrame: NSRect
         switch currentView {

@@ -214,3 +214,5 @@
 
 - 用户于 2026-11-13 决定 App Store 版 GitHub 图标使用官方黑／白；当前深色账号区与 client surface 使用白色，普通版原有配色不变。App Store 截图用同一 APP_STORE UI 编译条件捕获。
 - 用户补充 App Store 版顶部账号名也使用白色（account_1 行）；普通版保留现有配色。
+- 本地模型账号行与账号列表显示清晰的 CPU/chip 图标；本地上下文 slider 到下方 client 面板保留 20 pt 留白，后续 client 行随面板下移，保留原底边距。
+- App Store helper 使用与父 app 相同的 signing identifier，确保可解析父 app 创建的 app-scoped bookmarks；实际目录授权验收覆盖取消、保存、helper 重启后复用和配置恢复。
