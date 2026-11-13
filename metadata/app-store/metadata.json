@@ -291,5 +291,33 @@
   "reviewSubmitted": false,
   "buildUploadReceipt": "build5-upload.json",
   "latestUploadedBuildReceipt": "build5-upload.json",
-  "candidateSourceCommit": "94c3ef5d9ba869447a133c9d1be45194d1b7ce33"
+  "candidateSourceCommit": "94c3ef5d9ba869447a133c9d1be45194d1b7ce33",
+  "privacyPolicyVerifiedLocales": [
+    "en",
+    "ar",
+    "hi",
+    "de",
+    "ru",
+    "fr",
+    "zh-Hant",
+    "ko",
+    "zh-Hans",
+    "pt-BR",
+    "ja",
+    "es",
+    "vi"
+  ],
+  "submissionReadiness": {
+    "readyForUserSubmission": false,
+    "privacyPolicyURLsSavedAndReadBack": 13,
+    "remainingAppleValidation": [
+      "A build must be selected"
+    ],
+    "targetBuild": "1.0 (5)",
+    "targetBuildSelectable": false,
+    "latestObservedUploadState": "PROCESSING",
+    "reviewSubmitted": false,
+    "finalSubmissionOwner": "user",
+    "releaseMode": "manual"
+  }
 }

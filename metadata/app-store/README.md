@@ -28,9 +28,11 @@ The user explicitly authorized an independent App Store App Sandbox variant. The
 
 App Store clients initially remain Paused until the user grants access to the relevant configuration folder through NSOpenPanel/security-scoped bookmarks. Start at login uses SMAppService. Python/oMLX runtime code is bundled; only model data is downloaded after installation. App Store boundary tests and the prior candidate runtime/isolated bridge self-test passed. Native folder grants, real Qwen3 4B inference and all three client protocols passed as described below.
 
-## Remaining release preparation
+## User publication handoff — 2026-11-13
 
-- App Review submission and public release require their own authorization. Manual release remains selected.
+A fresh Apple submission check found missing localized privacy-policy URLs. All 13 locale URLs were then saved and read back after reloading the server-backed page. Re-running Add for Review validation now reports only “A build must be selected.” The published App Privacy data declarations were unchanged.
+
+The requested target 1.0 (5) remains PROCESSING in buildUploads with no errors/warnings and is not yet available in the version's build picker. Older 2.2.1 (3)/(4) builds were not selected. Metadata is prepared, but the version is not ready for user submission until Apple finishes processing: attach 1.0 (5), complete its build-specific export-compliance step if requested, and stage the version for review. Final App Review submission and public manual release are reserved for the user. No App Review submission or public release was performed.
 
 ## Focused validation
 
