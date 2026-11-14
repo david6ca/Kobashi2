@@ -265,7 +265,7 @@
   "appStoreSandboxAuthorized": true,
   "candidateVersion": "1.0",
   "candidateBuild": "5",
-  "candidateStatus": "ready_for_user_submission",
+  "candidateStatus": "rejected_runtime_fix_prepared_pending_full_review_message",
   "screenshotCaptureMethod": "WindowServer native window capture with preserved aspect ratio and window chrome",
   "remoteScreenshotAssignments": {
     "en-US": 2,
@@ -308,13 +308,15 @@
     "vi"
   ],
   "submissionReadiness": {
-    "readyForUserSubmission": true,
+    "readyForUserSubmission": false,
     "privacyPolicyURLsSavedAndReadBack": 13,
-    "remainingAppleValidation": [],
+    "remainingAppleValidation": [
+      "Obtain complete App Review message and verify all named non-public API references are removed"
+    ],
     "targetBuild": "1.0 (5)",
     "targetBuildSelectable": true,
     "latestObservedUploadState": "COMPLETE",
-    "reviewSubmitted": false,
+    "reviewSubmitted": true,
     "finalSubmissionOwner": "user",
     "releaseMode": "manual",
     "buildAttached": true,
@@ -327,9 +329,17 @@
     "distributedInFrance": false,
     "reviewDraftPrepared": true,
     "reviewDraftItems": 1,
-    "appStoreVersionDisplayState": "可供审核"
+    "appStoreVersionDisplayState": "Rejected (notification received)"
   },
   "excludedTerritories": [
     "FRA"
-  ]
+  ],
+  "appReview": {
+    "submissionId": "e61fa33a-8c83-43d3-8071-7849ce3c459c",
+    "rejectionNotificationAt": "2026-11-14T16:53:38+08:00",
+    "userReportedIssue": "Undocumented API usage",
+    "fullReviewerMessageRead": false,
+    "runtimeTkFixPrepared": true,
+    "replacementUploaded": false
+  }
 }

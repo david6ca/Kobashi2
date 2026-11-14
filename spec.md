@@ -217,3 +217,4 @@
 - 本地模型账号行与账号列表显示清晰的 CPU/chip 图标；本地上下文 slider 到下方 client 面板保留 20 pt 留白，后续 client 行随面板下移，保留原底边距。
 - App Store helper 使用与父 app 相同的 signing identifier，确保可解析父 app 创建的 app-scoped bookmarks；实际目录授权验收覆盖取消、保存、helper 重启后复用和配置恢复。
 - App Store 首发使用 1.0；构建脚本从 metadata/app-store/metadata.json 读取商店版本号，不再沿用普通版 package.json 的版本。Bundle ID 保持 com.pomegram.modelbridge，构建号继续递增。
+- App Store 推理 runtime 不包含未使用的 Tcl/Tk、tkinter、turtle GUI 或 PIL.ImageTk；新建 staging、--resume 及最终资源签名前均剔除这些组件，避免完整 Python GUI 工具链引入非公开 AppKit API。普通版 runtime 不受此规则影响。

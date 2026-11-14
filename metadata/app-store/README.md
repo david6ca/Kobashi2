@@ -57,3 +57,11 @@ After web sign-in was restored and the user explicitly confirmed rights for the 
 ## First App Store release version — 2026-11-13
 
 The user selected 1.0 for the first App Store release. The existing App Store draft was changed from 2.2.1 to 1.0 and read back with manual release still selected. The matching 1.0 (5) binary is now uploaded and Apple reported PROCESSING. The earlier 2.2.1 (4) package was preserved as historical evidence; uploaded packages cannot be relabeled. Store builds now read their marketing version from `metadata.json`, while the ordinary build keeps using its existing package version. Existing 13-locale text and screenshot assignments are retained.
+
+## Non-public API rejection investigation — 2026-11-14
+
+The user submitted the prepared version; Apple sent a rejection notification for submission `e61fa33a-8c83-43d3-8071-7849ce3c459c`. The notification email does not contain the actual API list. The embedded browser host is unavailable, including a fresh IAB-tab attempt; the full App Review message has been requested from the user. No reply was sent to Apple and no replacement was uploaded.
+
+Independent inspection of the retained build 5 archive found `_NSCanWrapButtonTitles`, `setAppleMenu:`, `_setUseModalAppearance:`, `_setKeyWindow:` and `_setMainWindow:` references in bundled Tcl/Tk. The app's Swift/AppKit UI and inference code do not use Tk. The packaging fix excludes Tcl/Tk, tkinter/turtle GUI components and Pillow ImageTk on fresh staging, resumed staging, and immediately before signing the actual copied runtime, so cached Xcode resources cannot bring them back.
+
+The sanitized staging runtime passed real Python/SSL/Pillow/MLX/oMLX imports, retained its built-in SSL module (OpenSSL 3.5.5), and completed offline Qwen3 4B inference with output READY. A scan of that runtime found no remaining references to the five symbols above. This is a confirmed packaging correction, not yet a claim that every API named by App Review is covered; the full rejection message is still required before preparing a replacement submission. The rejected archive/package and the ordinary installed app were not modified.

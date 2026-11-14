@@ -18,6 +18,8 @@ shutil.copyfile(root/'metadata/app-store/metadata.json',store_metadata)
 store=source/'macos/app-store'
 if not (store/'Runtime/runtime-manifest.json').exists():
     subprocess.run(['python3',str(root/'scripts/prepare-app-store-runtime.py'),'--venv',a.runtime_venv,'--output',str(store/'Runtime')],check=True)
+else:
+    subprocess.run(['python3',str(root/'scripts/prepare-app-store-runtime.py'),'--output',str(store/'Runtime'),'--sanitize-only'],check=True)
 # Generate the same product icon without altering tracked artwork or other builds.
 iconset=output/'AppIcon.iconset'
 subprocess.run(['xcrun','--toolchain','XcodeDefault','swift','-module-cache-path',str(output/'swift-cache'),str(source/'macos/icon.swift'),str(source/'assets/kobashi-icon.png'),str(iconset)],check=True)

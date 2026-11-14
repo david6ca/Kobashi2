@@ -2,6 +2,7 @@
 import os,subprocess
 from pathlib import Path
 root=Path(os.environ['TARGET_BUILD_DIR'])/os.environ['UNLOCALIZED_RESOURCES_FOLDER_PATH']/'Runtime'
+subprocess.run(['python3',str(Path(__file__).with_name('prepare-app-store-runtime.py')),'--output',str(root),'--sanitize-only'],check=True)
 identity=os.environ.get('EXPANDED_CODE_SIGN_IDENTITY') or '-'
 entitlements=Path(os.environ['SRCROOT'])/'Helper.entitlements'
 magic={b'\xcf\xfa\xed\xfe',b'\xce\xfa\xed\xfe',b'\xfe\xed\xfa\xcf',b'\xfe\xed\xfa\xce',b'\xca\xfe\xba\xbe',b'\xbe\xba\xfe\xca'}
