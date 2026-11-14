@@ -1,6 +1,6 @@
 # App Review response — build 1.0 (8)
 
-Prepared for the user-authorized resubmission. Not yet sent.
+The explanation was supplied in App Review Information with submission 1.0 (8). No separate message was sent: the previous submission was Removed and offered no reply action.
 
 Hello App Review,
 
