@@ -1,0 +1,18 @@
+ModelBridge is an independent local inference bridge for separately installed Codex, Claude Code and GitHub Copilot clients. It has no hosted ModelBridge account. Local inference needs an Apple Silicon Mac with macOS 15+ and initial model-data downloads. The app bundles a native llama.cpp engine with Metal acceleration; Python, pip and the previous oMLX dependency environment have been removed. Only pinned, SHA-256-verified GGUF model data is downloaded after installation. No runtime code is downloaded or installed.
+
+Use the account menu to add a local model or an optional GitHub Copilot source. GitHub uses device authorization. Settings contains Language (13 locales plus System Default); Privacy Statement is in the macOS app menu. Local inference does not require GitHub sign-in or a Copilot subscription.
+
+REQUIRED INCOMING LOOPBACK CONNECTIONS
+ModelBridge's bundled Go helper listens for incoming HTTP requests on:
+127.0.0.1:18921 - Codex Responses API
+127.0.0.1:18922 - Authenticated native UI control/status API
+127.0.0.1:18923 - Claude Code Messages API
+127.0.0.1:18925 - Copilot Chat Completions API
+
+Local inference additionally runs the bundled llama.cpp HTTP server on an ephemeral loopback port to receive requests from the bridge. All listeners bind to 127.0.0.1 only, not LAN/public interfaces. The network.server entitlement is declared on the parent because its Go/native-engine child processes inherit the App Sandbox. Without it, the core incoming listeners cannot operate. Outgoing HTTPS/model downloads use network.client separately.
+
+TO EXERCISE
+On a supported Mac, add a local model, enable a client row and grant its configuration directory with the system folder picker. Send a prompt from that coding client; it connects to its loopback listener and receives streamed model output. Clients initially remain Paused until folder access is granted. Start at login uses SMAppService. The native UI also calls the local control server during normal operation.
+
+REPLACEMENT BINARY
+The reported private/deprecated API references were traced to the previous Python dependencies. That environment has been removed. The native archive passes the full 52-name audit across all 14 Mach-O binaries. Real Qwen3 4B tests passed streaming tools and tool results for the three protocols, plus idle context replacement and restoration after a settings-write failure.

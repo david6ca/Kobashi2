@@ -1,6 +1,6 @@
 # App Review response draft — not sent
 
-Use this draft after selecting the new audited replacement build. Final reply and resubmission remain with the app owner.
+Use this draft after build 1.0 (7) finishes processing, selecting it for review and saving `review-information.txt` in App Review Information. Final reply and resubmission remain with the app owner.
 
 Hello App Review,
 
