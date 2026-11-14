@@ -718,7 +718,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         let appItem = NSMenuItem()
         main.addItem(appItem)
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: L("About ModelBridge"), action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        let about = appMenu.addItem(withTitle: L("About ModelBridge"), action: #selector(showAbout), keyEquivalent: "")
+        about.target = self
         addProductMenuItems(to: appMenu)
         appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: L("Hide ModelBridge"), action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
@@ -739,6 +740,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
         menu.addItem(withTitle: L("Select All"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         edit.submenu = menu
         NSApp.mainMenu = main
+    }
+
+    @objc func showAbout() {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.baseWritingDirection = L10n.isRTL ? .rightToLeft : .natural
+        let credits = NSAttributedString(
+            string: L("Based on Kobashi, originally created by Xin Jin."),
+            attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                         .foregroundColor: NSColor.secondaryLabelColor,
+                         .paragraphStyle: paragraph])
+        NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {

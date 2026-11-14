@@ -1898,6 +1898,21 @@
       "hi": "कनेक्ट करें",
       "ru": "Подключить",
       "vi": "Kết nối"
+    },
+    "Based on Kobashi, originally created by Xin Jin.": {
+      "en": "Based on Kobashi, originally created by Xin Jin.",
+      "zh-Hans": "基于 Xin Jin 最初创建的 Kobashi。",
+      "zh-Hant": "基於 Xin Jin 最初建立的 Kobashi。",
+      "ja": "Xin Jin が最初に開発した Kobashi を基にしています。",
+      "ko": "Xin Jin이 처음 만든 Kobashi를 기반으로 합니다.",
+      "de": "Basiert auf Kobashi, ursprünglich von Xin Jin entwickelt.",
+      "fr": "Basé sur Kobashi, créé à l’origine par Xin Jin.",
+      "pt-BR": "Baseado no Kobashi, criado originalmente por Xin Jin.",
+      "es": "Basado en Kobashi, creado originalmente por Xin Jin.",
+      "ar": "مبني على Kobashi الذي أنشأه Xin Jin في الأصل.",
+      "hi": "Xin Jin द्वारा मूल रूप से बनाए गए Kobashi पर आधारित।",
+      "ru": "Основано на Kobashi, первоначально созданном Xin Jin.",
+      "vi": "Dựa trên Kobashi, ban đầu do Xin Jin tạo ra."
     }
   }
 }

@@ -172,6 +172,8 @@
 
 ## 语言与产品名称
 
+- macOS 的 About ModelBridge 使用原生 About 面板，显示本地化致谢：`Based on Kobashi, originally created by Xin Jin.`；README 的 Acknowledgments 同时链接原始 Kobashi 项目和作者。
+
 - 产品名称为 `ModelBridge`，不添加 `Pomegram` 前缀或后缀。
 - macOS Bundle ID 使用 `com.pomegram.modelbridge`。
 - macOS / Windows 产品界面和 GTM 材料支持 13 个 locale：`en`、`zh-Hans`、`zh-Hant`、`ja`、`ko`、`de`、`fr`、`pt-BR`、`es`、`ar`、`hi`、`ru`、`vi`。

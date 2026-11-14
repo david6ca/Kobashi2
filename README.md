@@ -675,6 +675,10 @@ app** with Cmd-Q; rerun to check Dock > Quit. The terminal confirms its child ha
 stopped. This checks native event delivery, not real inference or client-config
 cleanup. The temporary test bundle is removed when the test exits.
 
+## Acknowledgments
+
+ModelBridge is based on [Kobashi](https://github.com/xjin6/kobashi), originally created by [Xin Jin](https://github.com/xjin6).
+
 ## License
 
 MIT
