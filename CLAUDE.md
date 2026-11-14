@@ -7,6 +7,13 @@ The app's display name and release artifacts are `ModelBridge`, `ModelBridge.app
 Preserve existing state identifiers: `~/.kobashi`, startup registration keys, ports, and the `Kobashi`
 client provider. Do not rename or duplicate saved logins or providers.
 
+## macOS release and local installation
+
+The user requires the Applications copy to be the exact App Store release build.
+Use the same signed App Sandbox app extracted from the uploaded package for local
+installation. Do not build a personal ordinary variant or re-sign the installed
+copy. Preserve running processes; the user restarts manually.
+
 ## UI feedback
 
 Successful operations are silent: no provider-registration explanations or saved

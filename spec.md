@@ -203,7 +203,7 @@
 
 ## Mac App Store 专用构建
 
-- 用户于 2026-11-12 明确授权 App Store 专用 App Sandbox 与本地运行环境打包；不替换 Applications 中的普通版本，不恢复暂停的截图更新。
+- 用户于 2026-11-14 明确要求 Applications 中的 App 与 App Store 待发布构建为同一份。统一使用正式签名的 App Sandbox 构建；本机直接安装上传包中的同一 App，不另做个人普通版、不重新签名。替换文件不自动重启当前运行进程。
 - Bundle ID 为 `com.pomegram.modelbridge`，保留产品名称 ModelBridge 和 13 个 locale。
 - 原生 llama.cpp 引擎和所需动态库随 App 打包，不包含 Python、pip 或 oMLX；运行时只下载固定 revision 与 SHA-256 校验的 GGUF 模型数据。
 - App 数据保存于自身 container；客户端配置目录通过系统文件夹选择与 security-scoped bookmarks 授权，helper 自行取得同一权限。
