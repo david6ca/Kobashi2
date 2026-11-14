@@ -264,8 +264,8 @@
   "remoteScreenshotNote": "All 13 locales have two custom screenshots named 804539a-<product-locale>-*.png, showing white App Store GitHub marks and header account text.",
   "appStoreSandboxAuthorized": true,
   "candidateVersion": "1.0",
-  "candidateBuild": "5",
-  "candidateStatus": "rejected_runtime_fix_prepared_pending_full_review_message",
+  "candidateBuild": "6",
+  "candidateStatus": "replacement_source_prepared",
   "screenshotCaptureMethod": "WindowServer native window capture with preserved aspect ratio and window chrome",
   "remoteScreenshotAssignments": {
     "en-US": 2,
@@ -291,7 +291,6 @@
   "reviewSubmitted": false,
   "buildUploadReceipt": "build5-upload.json",
   "latestUploadedBuildReceipt": "build5-upload.json",
-  "candidateSourceCommit": "94c3ef5d9ba869447a133c9d1be45194d1b7ce33",
   "privacyPolicyVerifiedLocales": [
     "en",
     "ar",
@@ -338,8 +337,12 @@
     "submissionId": "e61fa33a-8c83-43d3-8071-7849ce3c459c",
     "rejectionNotificationAt": "2026-11-14T16:53:38+08:00",
     "userReportedIssue": "Undocumented API usage",
-    "fullReviewerMessageRead": false,
+    "fullReviewerMessageRead": true,
     "runtimeTkFixPrepared": true,
-    "replacementUploaded": false
+    "replacementUploaded": false,
+    "allReportedAPIReferencesRemovedFromStaging": true,
+    "trackedAPINames": 52,
+    "networkServerEntitlementRetained": true,
+    "networkServerNotesStatus": "draft_ready_api_edit_forbidden"
   }
 }

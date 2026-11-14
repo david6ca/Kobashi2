@@ -31,6 +31,7 @@ if a.unsigned:command+=['CODE_SIGNING_ALLOWED=NO']
 with (output/'archive.log').open('w') as log:
     subprocess.run(command,stdout=log,stderr=subprocess.STDOUT,check=True)
 app=archive/'Products/Applications/ModelBridge.app'
+subprocess.run(['python3',str(root/'scripts/check-app-store-apis.py'),str(app)],check=True)
 if a.unsigned:
     subprocess.run(['/usr/bin/codesign','--force','--sign','-','--entitlements',str(store/'ModelBridge.entitlements'),str(app)],check=True)
 else:

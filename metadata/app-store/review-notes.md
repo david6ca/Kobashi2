@@ -1,8 +1,23 @@
-# ModelBridge review handoff — not submitted
+# ModelBridge App Review information draft
 
 ModelBridge connects separately installed coding clients (Claude Code, Codex and GitHub Copilot) to a selected inference source. GitHub sign-in is an optional inference-source connection; Local inference on a supported Mac does not require a GitHub account or Copilot subscription. The product does not create its own hosted user account.
 
 The current desktop candidate requires macOS 13+. Local inference requires an Apple Silicon Mac with macOS 15+, sufficient memory/storage and initial downloads. GitHub Copilot access and usage limits follow the connected account. Do not describe the bridge as providing unlimited or free Copilot access, or as an official client from GitHub, OpenAI or Anthropic.
+
+## Required incoming network connections
+
+`com.apple.security.network.server` is required for ModelBridge's core local HTTP bridge. The app's bundled Go helper listens for and responds to incoming connections from separately installed coding clients and the native UI on the same Mac:
+
+| Loopback listener | Function |
+| --- | --- |
+| `127.0.0.1:18921` | Codex Responses API requests and streamed responses |
+| `127.0.0.1:18922` | Authenticated native UI control/status API |
+| `127.0.0.1:18923` | Claude Code Messages API requests and streamed responses |
+| `127.0.0.1:18925` | Copilot client Chat Completions requests and streamed responses |
+
+Local inference also starts the bundled oMLX HTTP server on an ephemeral `127.0.0.1` port, which receives requests from the bridge. All listeners bind explicitly to loopback, not a LAN or public interface. The Go/Python child processes inherit the parent app's sandbox, so the entitlement is declared on the parent. These are incoming server connections, in addition to the outgoing HTTPS connections used for GitHub and model downloads.
+
+To exercise the server functionality, add a local model on a supported Mac, enable a client row and grant its configuration directory, then send a prompt from that coding client. The client calls the corresponding loopback listener and receives the model's streamed response. The UI also uses its local control listener throughout normal operation. Implementation: `internal/bridge/app.go` (`App.Start`) and `internal/bridge/local_runtime.go` (`startRuntime`).
 
 ## Review steps after the submission dependencies are resolved
 
