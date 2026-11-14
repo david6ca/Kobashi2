@@ -1,5 +1,7 @@
 # ModelBridge · App Store GTM
 
+Current code status (2026-11-14): local inference has migrated to a pinned native llama.cpp engine and GGUF weights. Python/oMLX and its package environment are removed from new builds. The isolated native archive passes the 52-name API check across 14 Mach-O binaries. Real Qwen3 4B streaming tools/results and context replacement/rollback passed. The previous upload was stopped at the user's request; publication remains stopped, with no replacement upload or App Review resubmission authorized by this code migration. The ordinary native test build is 48.14 MiB uncompressed; its local unsigned test installer is 19.48 MiB. The native store archive is 47.05 MiB. An independent Bundle ID copy signed with the existing Apple Development identity passed the sandbox engine/bridge self-test. The ad-hoc copy under the production Bundle ID blocked in macOS `_libsecinit_appsandbox` before application code and was terminated; this is not a distribution-signed or upload-ready candidate. Historical preparation/upload records below refer to the earlier runtime.
+
 Prepared 2026-11-11. Product name: **ModelBridge**. No publisher-brand prefix or suffix.
 
 ## Deliverables

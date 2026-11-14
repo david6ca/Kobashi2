@@ -5,7 +5,6 @@ package bridge
 import (
 	"context"
 	"errors"
-	"os"
 	"path/filepath"
 )
 
@@ -22,14 +21,6 @@ func prepareStoreOptions(options *Options) {
 	options.WriteEnvironment = func(string, *string) error { return nil }
 	options.Startup = func(bool) error { return nil } // SMAppService is owned by AppKit.
 	options.NativeCatalog = func(context.Context, string) ([]object, error) { return nil, nil }
-}
-
-func bundledRuntimePath(parts ...string) string {
-	executable, err := os.Executable()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(append([]string{filepath.Dir(filepath.Dir(executable)), "Runtime"}, parts...)...)
 }
 
 func storeClientFolderError() error {

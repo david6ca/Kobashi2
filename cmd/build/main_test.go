@@ -222,8 +222,8 @@ func TestReplaceArtifactRestoresPreviousReleaseWhenCommitFails(t *testing.T) {
 	source := filepath.Join(t.TempDir(), "new.exe")
 	target := filepath.Join(dist, "ModelBridge.exe")
 	writeReleaseFixture(t, dist, map[string]string{
-		"ModelBridge.exe":   "previous",
-		"SHA256SUMS.txt": "previous checksums",
+		"ModelBridge.exe": "previous",
+		"SHA256SUMS.txt":  "previous checksums",
 	})
 	if err := os.WriteFile(source, []byte("new"), 0600); err != nil {
 		t.Fatal(err)
@@ -234,8 +234,8 @@ func TestReplaceArtifactRestoresPreviousReleaseWhenCommitFails(t *testing.T) {
 		t.Fatal("commit failure not preserved", err)
 	}
 	for name, want := range map[string]string{
-		"ModelBridge.exe":   "previous",
-		"SHA256SUMS.txt": "previous checksums",
+		"ModelBridge.exe": "previous",
+		"SHA256SUMS.txt":  "previous checksums",
 	} {
 		data, err := os.ReadFile(filepath.Join(dist, name))
 		if err != nil || string(data) != want {
@@ -330,5 +330,37 @@ func TestReplaceArtifactKeepsRecoveryCopyWhenRollbackFails(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("recovery directory missing")
+	}
+}
+
+func TestPublishNativeRuntimeAliasesStayInsideApp(t *testing.T) {
+	root := t.TempDir()
+	app := filepath.Join(root, "built", "ModelBridge.app")
+	runtimeDir := filepath.Join(app, "Contents", "Resources", "Runtime")
+	if err := os.MkdirAll(runtimeDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(runtimeDir, "libengine.1.0.dylib"), []byte("native-library"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("libengine.1.0.dylib", filepath.Join(runtimeDir, "libengine.1.dylib")); err != nil {
+		t.Fatal(err)
+	}
+	dist := filepath.Join(root, "dist")
+	if err := publish(dist, app, "ModelBridge.app"); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(dist, "ModelBridge.app", "Contents", "Resources", "Runtime", "libengine.1.dylib")
+	if link, err := os.Readlink(alias); err != nil || link != "libengine.1.0.dylib" {
+		t.Fatal("native alias was not preserved", link, err)
+	}
+	if err := os.Symlink("../../../../outside.dylib", filepath.Join(runtimeDir, "escape.dylib")); err != nil {
+		t.Fatal(err)
+	}
+	if err := publish(dist, app, "ModelBridge.app"); err == nil {
+		t.Fatal("external runtime symlink accepted")
+	}
+	if _, err := os.ReadFile(alias); err != nil {
+		t.Fatal("failed publication damaged existing app", err)
 	}
 }

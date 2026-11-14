@@ -281,6 +281,18 @@ func buildMac(workspace, output string, env []string, version string) error {
 			return err
 		}
 	}
+	// Build-time staging only: the installed app includes a small native engine.
+	runtimeCommand := exec.Command("go", "run", "./cmd/app-store-runtime", "--home", filepath.Join(workspace, "runtime-home"))
+	runtimeCommand.Dir = workspace
+	runtimeCommand.Env = env
+	runtimeCommand.Stderr = os.Stderr
+	runtimePath, err := runtimeCommand.Output()
+	if err != nil {
+		return fmt.Errorf("prepare native model runtime: %w", err)
+	}
+	if err := copyNativeRuntime(strings.TrimSpace(string(runtimePath)), filepath.Join(app, "Resources", "Runtime")); err != nil {
+		return err
+	}
 	swiftBinaries := []string{}
 	for _, architecture := range []string{"arm64", "amd64"} {
 		childEnv := envWith(env, "GOOS", "darwin")
@@ -344,7 +356,11 @@ func releaseChecksums(path, name string) ([]string, error) {
 		if entry.IsDir() {
 			return nil
 		}
-		if !entry.Type().IsRegular() {
+		if entry.Type()&os.ModeSymlink != 0 {
+			if _, err := nativeReleaseLink(path, file); err != nil {
+				return err
+			}
+		} else if !entry.Type().IsRegular() {
 			return fmt.Errorf("release contains a non-regular file: %s", file)
 		}
 		rel, err := filepath.Rel(path, file)
@@ -413,7 +429,7 @@ func publish(dir, built, name string) error {
 	defer os.RemoveAll(temp)
 	staged := filepath.Join(temp, name)
 	if info.IsDir() {
-		err = copyTree(built, staged)
+		err = copyAppArtifact(built, staged)
 	} else {
 		err = copyFile(built, staged)
 	}
@@ -466,4 +482,91 @@ func publish(dir, built, name string) error {
 		return fmt.Errorf("publish %s: %w; use -output to save elsewhere without stopping a running app", filepath.Join(dir, name), err)
 	}
 	return nil
+}
+
+func copyNativeRuntime(source, target string) error {
+	if err := os.MkdirAll(target, 0700); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(source)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		from, to := filepath.Join(source, entry.Name()), filepath.Join(target, entry.Name())
+		if entry.Type()&os.ModeSymlink != 0 {
+			link, err := os.Readlink(from)
+			if err != nil {
+				return err
+			}
+			if filepath.Base(link) != link {
+				return errors.New("native runtime contains an external symlink")
+			}
+			if err = os.Symlink(link, to); err != nil {
+				return err
+			}
+		} else {
+			if entry.IsDir() {
+				return errors.New("unexpected directory in native runtime")
+			}
+			if err = copyFile(from, to); err != nil {
+				return err
+			}
+			if entry.Name() == "llama-server" || strings.HasSuffix(entry.Name(), ".dylib") {
+				if err = os.Chmod(to, 0700); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// Only native-runtime dylib aliases are permitted in a finished app. Source
+// snapshots continue to reject all symlinks through copyTree.
+func nativeReleaseLink(root, path string) (string, error) {
+	runtimeRoot := filepath.Join(root, "Contents", "Resources", "Runtime")
+	link, err := os.Readlink(path)
+	if err != nil {
+		return "", err
+	}
+	if filepath.Dir(path) != runtimeRoot || filepath.Base(link) != link || !strings.HasSuffix(link, ".dylib") {
+		return "", fmt.Errorf("release contains an external or unsupported link: %s", path)
+	}
+	target, err := filepath.EvalSymlinks(path)
+	realRoot, rootErr := filepath.EvalSymlinks(runtimeRoot)
+	if err != nil || rootErr != nil || !within(target, realRoot) {
+		return "", fmt.Errorf("runtime link leaves app bundle: %s", path)
+	}
+	info, err := os.Stat(target)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", fmt.Errorf("runtime link is not a library file: %s", path)
+	}
+	return link, nil
+}
+func copyAppArtifact(source, target string) error {
+	return filepath.WalkDir(source, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+		to := filepath.Join(target, rel)
+		if entry.IsDir() {
+			return os.MkdirAll(to, 0700)
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			link, err := nativeReleaseLink(source, path)
+			if err != nil {
+				return err
+			}
+			return os.Symlink(link, to)
+		}
+		if !entry.Type().IsRegular() {
+			return fmt.Errorf("unsupported artifact file: %s", path)
+		}
+		return copyFile(path, to)
+	})
 }

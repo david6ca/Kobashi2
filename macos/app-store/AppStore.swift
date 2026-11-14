@@ -90,21 +90,16 @@ func runAppStoreSelfTest() throws {
     try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: home) }
     let resources = Bundle.main.resourceURL!
-    let python = Process()
-    python.executableURL = resources.appendingPathComponent("Runtime/python/bin/python3.12")
-    python.arguments = ["-c", "import sys; assert sys.version_info[:2] == (3,12); import omlx.server; from omlx.model_settings import ModelSettings; ModelSettings(turboquant_kv_enabled=True,turboquant_kv_scheme='turboquant',turboquant_kv_bits=4); print('Bundled Python/oMLX imports passed')"]
+    let engine = Process()
+    engine.executableURL = resources.appendingPathComponent("Runtime/llama-server")
+    engine.arguments = ["--version"]
     var environment = ProcessInfo.processInfo.environment
     environment["HOME"] = home.path
-    environment["PYTHONHOME"] = resources.appendingPathComponent("Runtime/python").path
-    environment["PYTHONPATH"] = resources.appendingPathComponent("Runtime/site-packages").path
-    environment["PYTHONDONTWRITEBYTECODE"] = "1"
-    environment["HF_HOME"] = home.appendingPathComponent("hf-cache").path
-    environment["HF_HUB_DISABLE_TELEMETRY"] = "1"
-    environment["DO_NOT_TRACK"] = "1"
-    python.environment = environment
-    try python.run()
-    python.waitUntilExit()
-    guard python.terminationStatus == 0 else { throw NSError(domain: "StoreCheck", code: Int(python.terminationStatus)) }
+    engine.environment = environment
+    try engine.run()
+    engine.waitUntilExit()
+    guard engine.terminationStatus == 0 else { throw NSError(domain: "StoreCheck", code: Int(engine.terminationStatus)) }
+    print("Bundled native llama.cpp starts without Python")
 
     let process = Process()
     #if arch(arm64)

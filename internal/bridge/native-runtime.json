@@ -1,0 +1,18 @@
+{
+  "version": "b12377",
+  "archive": "llama-b12377-bin-macos-arm64.tar.gz",
+  "sha256": "abf1e91b761acdd707cc8e66abe930e47fe1a64ccb1e63662bdd67f7aebe3306",
+  "files": [
+    "libggml-base.1.0.0.dylib",
+    "libggml-blas.1.0.0.dylib",
+    "libggml-cpu.1.0.0.dylib",
+    "libggml-metal.1.0.0.dylib",
+    "libggml-rpc.1.0.0.dylib",
+    "libggml.1.0.0.dylib",
+    "libllama-common.1.0.0.dylib",
+    "libllama-server-impl.dylib",
+    "libllama.1.0.0.dylib",
+    "libmtmd.1.0.0.dylib",
+    "llama-server"
+  ]
+}

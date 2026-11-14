@@ -3,7 +3,7 @@ Never installs the candidate, launches the ordinary app, or uploads a build.
 """
 import argparse,json,os,plistlib,shutil,subprocess
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--runtime-venv',required=True);p.add_argument('--output',required=True);p.add_argument('--team',required=True);p.add_argument('--build',default='1');p.add_argument('--resume',action='store_true');p.add_argument('--unsigned',action='store_true');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--runtime-dir');p.add_argument('--output',required=True);p.add_argument('--team',required=True);p.add_argument('--build',default='1');p.add_argument('--resume',action='store_true');p.add_argument('--unsigned',action='store_true');a=p.parse_args()
 root=Path(__file__).resolve().parents[1];output=Path(a.output).resolve()
 if output==root or root in output.parents:raise SystemExit('App Store build output must be outside the checkout')
 output.mkdir(parents=True,exist_ok=True);source=output/'source'
@@ -16,10 +16,9 @@ store_metadata=source/'metadata/app-store/metadata.json'
 store_metadata.parent.mkdir(parents=True,exist_ok=True)
 shutil.copyfile(root/'metadata/app-store/metadata.json',store_metadata)
 store=source/'macos/app-store'
-if not (store/'Runtime/runtime-manifest.json').exists():
-    subprocess.run(['python3',str(root/'scripts/prepare-app-store-runtime.py'),'--venv',a.runtime_venv,'--output',str(store/'Runtime')],check=True)
-else:
-    subprocess.run(['python3',str(root/'scripts/prepare-app-store-runtime.py'),'--output',str(store/'Runtime'),'--sanitize-only'],check=True)
+runtime_command=['python3',str(root/'scripts/prepare-app-store-runtime.py'),'--output',str(store/'Runtime')]
+if a.runtime_dir:runtime_command+=['--runtime-dir',a.runtime_dir]
+subprocess.run(runtime_command,check=True)
 # Generate the same product icon without altering tracked artwork or other builds.
 iconset=output/'AppIcon.iconset'
 subprocess.run(['xcrun','--toolchain','XcodeDefault','swift','-module-cache-path',str(output/'swift-cache'),str(source/'macos/icon.swift'),str(source/'assets/kobashi-icon.png'),str(iconset)],check=True)
@@ -41,7 +40,7 @@ else:
     with (output/'export.log').open('w') as log:
         subprocess.run(['xcodebuild','-exportArchive','-archivePath',str(archive),'-exportPath',str(export),'-exportOptionsPlist',str(output/'ExportOptions.plist'),'-allowProvisioningUpdates'],stdout=log,stderr=subprocess.STDOUT,check=True)
 subprocess.run(['/usr/bin/codesign','--verify','--deep','--strict',str(app)],check=True)
-subprocess.run([str(app/'Contents/MacOS/ModelBridge'),'--store-self-test'],check=True)
+subprocess.run([str(app/'Contents/MacOS/ModelBridge'),'--store-self-test'],check=True,timeout=120)
 commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
 dirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=root,text=True).strip())
 receipt={'productName':'ModelBridge','bundleId':'com.pomegram.modelbridge','version':version,'build':a.build,'sourceCommit':commit,'sourceDirty':dirty,'appSandbox':True,'runtimeBundled':True,'uploaded':False,'mainInstalledAppReplaced':False,'screenshotsUpdated':False,'archive':str(archive)}

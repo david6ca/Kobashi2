@@ -92,41 +92,21 @@ even when other apps currently use too much memory. A warning asks you to free
 memory before starting; runtime memory limits still apply.
 **Add GitHub account** opens the device-authorization page, with Back to cancel.
 
-ModelBridge checks existing installations before setup. A working oMLX runtime is
-reused after its version and required imports are verified, even if an earlier
-setup did not save its completion marker. Existing uv and compatible Python 3.12
-installations are reused; Python discovery runs offline before any download.
-Packages remain isolated in ModelBridge's own environment; system Python packages
-are not modified. Verified download caches and completed model downloads are
-also reused. Only missing setup components are installed.
+ModelBridge bundles a pinned native llama.cpp engine with Metal acceleration. No
+Python, pip, oMLX, Ollama or separately installed inference app is required.
+Models are downloaded as GGUF data from pinned Hugging Face revisions and checked
+against SHA-256. Interrupted downloads resume; verified files are reused.
+The ordinary and App Store Mac builds include the same native engine. The App
+Store build never downloads runtime code. Source builds stage the engine with
+`go run ./cmd/app-store-runtime --home /absolute/disposable/build-home`.
 
-ModelBridge prepares its oMLX runtime and Python environment, downloads the model,
-and prepares inference without asking for a Base URL, API key, or terminal command.
-Setup runs in the background with progress and cancellation. Installation labels
-show the current action out of six stages, such as
-`5/6  Installing model tools`, with actual
-bytes for the installer/oMLX downloads and a count of downloaded packages while
-dependencies install. Labels distinguish checking existing tools, reusing them,
-downloading missing components, installing dependencies, and verifying setup.
-These dependencies let the local oMLX engine run models. The progress bar measures completed work, not
-the current stage number or elapsed time; dependency resolution and package
-installation can remain on one step until they finish. Model downloads show
-actual bytes. Runtime installation commands use the configured environment or system
-proxy, without changing other apps. Python package resolution uses only
-`https://packagefeedproxy.microsoft.io/pypi/simple/`, including isolated build
-dependencies; inherited package-index settings and public PyPI fallbacks are
-disabled. The pinned oMLX release and source overrides still come from GitHub.
-An installation-only loopback index adapts the Microsoft feed's HTML: it retains
-the original Microsoft wheel URLs and checksums, but removes metadata-sidecar
-advertisements that can return 404. Package metadata is read from the wheel
-instead; no alternative package source or relaxed TLS validation is used.
-Failed dependency downloads identify the
-host to check and retain details in `~/.kobashi/local/setup.log`. Retry resumes model
-downloads. The current account stays selected until the new model is ready.
+Setup runs in the background with byte progress, cancellation and retry. The
+current source stays selected until the new model is ready. Existing MLX files
+are retained but cannot be loaded by llama.cpp; adding the same model downloads
+its corresponding GGUF without deleting the old files.
 
 Local models appear alongside saved GitHub accounts and can power Claude, Codex,
-and Copilot. The selected model uses 4-bit TurboQuant KV compression on supported
-layers, with the final attention layer retained at native precision. Local
+and Copilot. The selected model uses llama.cpp `q4_0` compression for both K and V caches. Local
 inference never falls back to a cloud model. Existing client logins are preserved.
 Codex may need a full restart to reload its model picker after the first setup.
 Local Codex catalogs retain the supported `freeform` patch-tool type; `function`
@@ -167,17 +147,15 @@ limit is not a guarantee that your Mac can fit a full request. The slider's help
 shows the RAM-based recommendation; **Context · recommended** marks that value
 when selected. Recommendations do not overwrite existing manual choices.
 
-Releasing the slider saves and immediately applies the capacity to the running
-model through oMLX's authenticated settings API, without reselecting the account,
-restarting ModelBridge, reloading model weights, or interrupting current inference.
-The bridge verifies the effective runtime limit before publishing the new client
-budgets and Codex model catalog. **Restart Codex to apply** reminds you to restart
-Codex so it reloads its cached context budget, even when using the same model.
-Hover over the slider for memory/performance guidance. The slider changes
-token capacity, not KV quantization; TurboQuant 4-bit compression stays enabled.
+Changing the slider rebuilds the native engine's context allocation only while
+no request is running. A busy request keeps its original engine and capacity;
+retry after it finishes. If the replacement fails, ModelBridge attempts to
+restore the previous engine and keeps the saved capacity unchanged. ModelBridge
+and coding clients are never restarted automatically. Codex may need a restart
+to reload its cached model catalog. Both K and V remain quantized at 4-bit.
 
-Runtime packages, models, and setup logs are stored under `~/.kobashi/local`.
-Removing a local account keeps its downloaded model. Local oMLX support is Mac-only;
+Models and engine logs are stored under `~/.kobashi/local`. Removing a local
+account keeps its downloads. Local inference remains Apple Silicon/macOS 15+;
 Windows and Intel Macs retain GitHub Copilot sources.
 
 ### Multiple accounts

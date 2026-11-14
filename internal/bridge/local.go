@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -17,6 +16,8 @@ import (
 )
 
 type localModel struct {
+	File       string `json:"-"`
+	SHA256     string `json:"-"`
 	ID         string `json:"id"`
 	Name       string `json:"name"`
 	Repo       string `json:"-"`
@@ -27,9 +28,9 @@ type localModel struct {
 }
 
 var localModels = []localModel{
-	{"qwen3-4b", "Qwen3 4B", "mlx-community/Qwen3-4B-Instruct-2507-4bit", "50d427756c6b1b2fe0c0a10f67fbda1fc8e82c1b", 2500000000, 8 << 30, 262144},
-	{"qwen3-8b", "Qwen3 8B", "mlx-community/Qwen3-8B-4bit", "545dc4251c05440727734bcd94334791f6ab0192", 5000000000, 16 << 30, 40960},
-	{"qwen3-coder-30b", "Qwen3-Coder 30B", "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit", "6e302ea604ad9ab206367e2c501d1571023e7b6d", 18000000000, 32 << 30, 262144},
+	{ID: "qwen3-4b", Name: "Qwen3 4B", Repo: "lmstudio-community/Qwen3-4B-Instruct-2507-GGUF", Revision: "4edb920b6f14e3b9284d4502a6485103d72cde05", Bytes: 2497280448, MinimumRAM: 8 << 30, MaxContext: 262144, File: "Qwen3-4B-Instruct-2507-Q4_K_M.gguf", SHA256: "8cdb57cbb880d313736a9bc4e3d3d2485f145b5e19cf33783746e753e82641fc"},
+	{ID: "qwen3-8b", Name: "Qwen3 8B", Repo: "Qwen/Qwen3-8B-GGUF", Revision: "7c41481f57cb95916b40956ab2f0b139b296d974", Bytes: 5027783488, MinimumRAM: 16 << 30, MaxContext: 40960, File: "Qwen3-8B-Q4_K_M.gguf", SHA256: "d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785"},
+	{ID: "qwen3-coder-30b", Name: "Qwen3-Coder 30B", Repo: "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF", Revision: "b17cb02dd882d5b6ab62fc777ad2995f19668350", Bytes: 18556689568, MinimumRAM: 32 << 30, MaxContext: 262144, File: "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf", SHA256: "fadc3e5f8d42bf7e894a785b05082e47daee4df26680389817e2093056f088ad"},
 }
 
 func findLocalModel(id string) (localModel, bool) {
@@ -166,33 +167,43 @@ func (l *localManager) setContext(id string, value int) (object, error) {
 	if !slices.Contains(localContextChoices(id), value) {
 		return nil, errors.New("Choose a supported context window for this local model")
 	}
+	// llama.cpp allocates its KV cache at startup. Never replace a live engine.
+	if !l.app.routes.TryLock() {
+		return nil, errLocalBusy
+	}
+	defer l.app.routes.Unlock()
 	l.mu.Lock()
 	next := maps.Clone(l.contexts)
 	next[id] = value
-	if err := writeJSON(l.app.path("local-context.json"), next); err != nil {
-		l.mu.Unlock()
+	active := l.runtimeModel == id && l.endpoint != "" && l.runtimeContext > 0
+	previous := l.runtimeContext
+	l.mu.Unlock()
+	rollback := func(err error) (object, error) {
+		if active && previous != value {
+			if restore := l.startRuntimeAtContext(l.app.ctx, id, previous); restore != nil {
+				err = errors.Join(err, fmt.Errorf("Restore previous local context: %w", restore))
+			} else {
+				l.mu.Lock()
+				l.setup.Stage = "Ready"
+				l.setup.Error = ""
+				l.mu.Unlock()
+			}
+		}
 		return nil, err
 	}
-	if l.runtimeModel == id && l.endpoint != "" && l.runtimeContext > 0 && l.runtimeContext != value {
-		if err := l.updateRuntimeContext(l.app.ctx, l.endpoint, l.secret, id, value); err != nil {
-			restoreErr := l.updateRuntimeContext(l.app.ctx, l.endpoint, l.secret, id, l.runtimeContext)
-			saveErr := writeJSON(l.app.path("local-context.json"), l.contexts)
-			l.mu.Unlock()
-			err = fmt.Errorf("Could not apply local context: %w", err)
-			if restoreErr != nil {
-				err = errors.Join(err, fmt.Errorf("Restore previous runtime context: %w", restoreErr))
-			}
-			if saveErr != nil {
-				err = errors.Join(err, fmt.Errorf("Restore previous context settings: %w", saveErr))
-			}
-			return nil, err
+	if active && previous != value {
+		if err := l.startRuntimeAtContext(l.app.ctx, id, value); err != nil {
+			return rollback(fmt.Errorf("Could not apply local context: %w", err))
 		}
-		l.runtimeContext = value
 	}
+	if err := writeJSON(l.app.path("local-context.json"), next); err != nil {
+		return rollback(err)
+	}
+	l.mu.Lock()
 	l.contexts = next
-	active := value
-	if l.runtimeModel == id && l.endpoint != "" && l.runtimeContext > 0 {
-		active = l.runtimeContext
+	if active {
+		l.setup.Stage = "Ready"
+		l.setup.Error = ""
 	}
 	l.mu.Unlock()
 	if l.app.snapshot().LocalModel == id {
@@ -200,7 +211,7 @@ func (l *localManager) setContext(id string, value int) (object, error) {
 			return nil, fmt.Errorf("Context applied, but could not update the Codex model catalog: %w", err)
 		}
 	}
-	return object{"model": id, "contextWindow": value, "activeContextWindow": active, "contextPending": active != value}, nil
+	return object{"model": id, "contextWindow": value, "activeContextWindow": value, "contextPending": false}, nil
 }
 func (l *localManager) path(parts ...string) string {
 	return filepath.Join(append([]string{l.app.path("local")}, parts...)...)
@@ -559,7 +570,7 @@ func (l *localManager) models(id string) []object {
 func (l *localManager) writeCatalog(id string) error {
 	m := fallbackModel(id, localModelName(id), 0)
 	window := l.contextSize(id)
-	m["description"] = "Local · oMLX"
+	m["description"] = "Local · llama.cpp"
 	m["context_window"] = window
 	m["max_context_window"] = window
 	m["effective_context_window_percent"] = (window - localMaxOutputTokens) * 100 / window
@@ -570,38 +581,5 @@ func (l *localManager) writeCatalog(id string) error {
 	m["default_reasoning_summary"] = "none"
 	m["use_responses_lite"] = false
 	return writeJSON(l.app.path("codex-model-catalog.json"), object{"models": []any{m}})
-}
-func (l *localManager) runtimeConfig(id string, port int, secret string, window int) error {
-	base := l.path("server", id)
-	total, _, _ := localHardware()
-	tier := "balanced"
-	// oMLX's balanced reserve is 3 GiB; its small-Mac tier still enforces
-	// both a dynamic memory ceiling and Apple's Metal working-set cap.
-	if total > 0 && total <= 16<<30 {
-		tier = "aggressive"
-	}
-	if err := os.MkdirAll(filepath.Join(base, "models"), 0700); err != nil {
-		return err
-	}
-	link := filepath.Join(base, "models", id)
-	if _, err := os.Lstat(link); errors.Is(err, os.ErrNotExist) {
-		if err = os.Symlink(l.path("models", id), link); err != nil {
-			return err
-		}
-	}
-	if err := writeJSON(filepath.Join(base, "settings.json"), object{
-		"server":    object{"host": "127.0.0.1", "port": port, "log_level": "warning"},
-		"auth":      object{"api_key": secret, "skip_api_key_verification": false},
-		"model":     object{"model_dirs": []any{filepath.Join(base, "models")}, "model_fallback": false},
-		"scheduler": object{"max_concurrent_requests": 1},
-		"memory":    object{"memory_guard_tier": tier, "prefill_memory_guard": true},
-		"cache":     object{"ssd_cache_max_size": "2GB"},
-	}); err != nil {
-		return err
-	}
-	return writeJSON(filepath.Join(base, "model_settings.json"), object{"version": 1, "models": object{id: object{
-		"is_default": true, "is_pinned": true, "enable_thinking": false, "max_context_window": window, "max_tokens": localMaxOutputTokens,
-		"turboquant_kv_enabled": true, "turboquant_kv_scheme": "turboquant", "turboquant_kv_bits": 4, "turboquant_skip_last": true,
-	}}})
 }
 func localSecret() string { return rand.Text() }

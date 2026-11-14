@@ -16,7 +16,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "--home is required")
 		os.Exit(2)
 	}
-	path, err := bridge.PrepareAppStoreRuntime(context.Background(), *home)
+	path, err := bridge.PrepareNativeRuntime(context.Background(), *home)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

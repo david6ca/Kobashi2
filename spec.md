@@ -38,7 +38,7 @@
 ## Local Source
 
 - Local setup 完全在 ModelBridge 内完成。
-- Mac Local 使用 oMLX，要求 Apple Silicon 和 macOS 15+；不支持的设备仍可使用 GitHub Copilot。
+- Mac Local 使用内置 llama.cpp + Metal，要求 Apple Silicon 和 macOS 15+；不支持的设备仍可使用 GitHub Copilot。
 - 用户无需输入 Base URL、端口、API key、模型路径或命令。
 - 用户无需自行安装 Ollama、LM Studio、Python 或其他推理环境。
 - ModelBridge 自动准备适合本机的运行环境、下载模型并启动本地推理。
@@ -47,7 +47,7 @@
 - Local 不需要 ModelBridge 的 GitHub 登录或 Copilot 订阅。
 - `Add a local model` 页面不包含 GitHub 登录控件；默认选中推荐模型，显示下载大小和 `Add`。GitHub 登录不触发本地模型读取或安装。
 - 用户选择 `Add` 后自动完成环境准备、模型下载和启动，无需逐项确认。
-- 已有的完整模型文件可复用，不重复下载。
+- 已有的完整 GGUF 模型文件可复用，不重复下载；旧 MLX 权重保留在原位置，不删除、不转换，也不误认为 GGUF 已就绪。
 - 模型就绪后自动成为 active source；若存在运行中的请求，保留原 source，待其结束后完成切换。
 - 已配置的 Local source 在下次被选择或恢复时自动启动，无需打开其他应用。
 - 完成必要下载后，本地推理可离线使用。
@@ -87,13 +87,14 @@
 
 ## KV Cache 与响应速度
 
-- Local 必须支持推理过程中使用的 quantized KV cache，K 与 V 默认采用 oMLX 支持的 TurboQuant 格式；支持层使用 4-bit。
+- Local 必须支持推理过程中使用的 quantized KV cache，K 与 V 默认采用 llama.cpp 的 `q4_0` 格式（4-bit）；不将其标记为 TurboQuant。
 - 低于 4-bit 的 KV 精度不作为默认配置。
 - 推理中的 KV 量化、prefix cache 复用和磁盘缓存压缩分别描述；仅压缩磁盘缓存不满足 quantized KV 的要求。
 - 模型权重量化与 KV cache 量化分别管理；使用 Q4 权重不代表 KV cache 已量化。
 - 默认模型与运行环境组合必须支持上述 quantized KV 配置；不支持时显示实际限制，不静默退回未量化缓存并宣称已启用。
 - 用户无需手动配置 KV 类型、加速选项或显存参数；ModelBridge 自动管理，并在 Local 详情中提供实际缓存精度和上下文容量。
 - 同一会话连续交互时复用可用的 prompt / prefix cache，减少重复上下文处理；不同 sources 和会话保持内容隔离。
+- 修改 context 时，仅在没有进行中的请求时重建 llama.cpp 的 KV cache；繁忙时拒绝本次修改并保留原容量。重建失败时恢复原容量，不重启 ModelBridge 或其他客户端。
 - 模型在使用期间保持就绪，避免每轮重新加载；默认上下文以交互速度和实际任务需要为依据，不自动分配理论最大容量。
 - 内存预算包含实际 KV 格式、上下文长度、并发会话及模型的其他状态缓存；混合架构中不能量化的状态不计为已量化 KV。
 - 仅部分 attention layers 可量化时，Local 详情须显示实际覆盖范围；prefill 的峰值内存与 decode 的缓存占用分别纳入资源预算。
@@ -202,7 +203,7 @@
 
 - 用户于 2026-11-12 明确授权 App Store 专用 App Sandbox 与本地运行环境打包；不替换 Applications 中的普通版本，不恢复暂停的截图更新。
 - Bundle ID 为 `com.pomegram.modelbridge`，保留产品名称 ModelBridge 和 13 个 locale。
-- Python / oMLX 和依赖代码随 App 打包；运行时只下载模型数据，不下载或安装新的运行环境代码。
+- 原生 llama.cpp 引擎和所需动态库随 App 打包，不包含 Python、pip 或 oMLX；运行时只下载固定 revision 与 SHA-256 校验的 GGUF 模型数据。
 - App 数据保存于自身 container；客户端配置目录通过系统文件夹选择与 security-scoped bookmarks 授权，helper 自行取得同一权限。
 - App Store 版首次连接来源时客户端保持 Paused，用户启用对应客户端时授权其配置目录；普通版本的初始启用行为不变。
 - Start at login 使用 SMAppService，不写 LaunchAgents 或全局用户环境变量。
@@ -217,6 +218,6 @@
 - 本地模型账号行与账号列表显示清晰的 CPU/chip 图标；本地上下文 slider 到下方 client 面板保留 20 pt 留白，后续 client 行随面板下移，保留原底边距。
 - App Store helper 使用与父 app 相同的 signing identifier，确保可解析父 app 创建的 app-scoped bookmarks；实际目录授权验收覆盖取消、保存、helper 重启后复用和配置恢复。
 - App Store 首发使用 1.0；构建脚本从 metadata/app-store/metadata.json 读取商店版本号，不再沿用普通版 package.json 的版本。Bundle ID 保持 com.pomegram.modelbridge，构建号继续递增。
-- App Store 推理 runtime 不包含未使用的 Tcl/Tk、tkinter、turtle GUI 或 PIL.ImageTk；新建 staging、--resume 及最终资源签名前均剔除这些组件，避免完整 Python GUI 工具链引入非公开 AppKit API。普通版 runtime 不受此规则影响。
+- App Store runtime 只包含固定版本的 llama-server、所需原生动态库和 license；不复制通用 Python 或第三方 pip 环境。最终 archive 仍检查已知非公开 API 引用。
 - App Store runtime 使用同版本 SciPy 的官方 OpenBLAS wheel，不链接审核点名的旧 Accelerate BLAS/LAPACK 接口；移除未使用的 PyArrow S3 后端，保留本地 Arrow/Parquet/datasets 功能。SDL2 使用已核验官方源码关闭 Cocoa 视频与 Metal renderer 的构建，保留 OpenCV 图像和视频读写。
 - Archive 后、export 前扫描整个 app 的所有 Mach-O，拒绝审核清单中的 47 个 API 及另发现的 5 个 Tk 私有名称；原拒审包必须被该检查拒绝，修复产物必须通过。保留 network.server，并在审核说明中解释所有仅绑定 127.0.0.1 的入站 HTTP 服务及 child sandbox 继承用途。

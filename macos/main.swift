@@ -1961,7 +1961,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFiel
                  ? "Restart Codex to apply" : value == recommended ? "Context · recommended" : "Context window")
         let applies = L("Context capacity applies immediately. Restart Codex to reload its budget.")
         let recommendation = choices.contains(recommended) ? L10n.format("Recommended for your RAM: {0}. This is a conservative starting point, not a memory guarantee.", contextTokenText(recommended)) + "\n" : ""
-        let help = L("Use Left and Right Arrow to choose a token capacity.") + "\n" + recommendation + L10n.format("Range: {0} to {1}.", contextTokenText(choices[0]), contextTokenText(choices[choices.count - 1])) + "\n" + L("More tokens use more memory and may be slower. TurboQuant 4-bit KV compression stays enabled.") + "\n" + (pending ? L10n.format("Active: {0}. Waiting for runtime confirmation.", contextTokenText(active)) : applies)
+        let help = L("Use Left and Right Arrow to choose a token capacity.") + "\n" + recommendation + L10n.format("Range: {0} to {1}.", contextTokenText(choices[0]), contextTokenText(choices[choices.count - 1])) + "\n" + L("More tokens use more memory and may be slower. 4-bit KV compression stays enabled.") + "\n" + (pending ? L10n.format("Active: {0}. Waiting for runtime confirmation.", contextTokenText(active)) : applies)
         slider.toolTip = "\(text)\n\(help)"
         slider.setAccessibilityHelp(help)
         for key in ["usageLabel", "usageValue"] {
