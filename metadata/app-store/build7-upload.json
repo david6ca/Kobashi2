@@ -45,5 +45,10 @@
   "idleContextReplacementPassed": true,
   "contextPersistenceFailureRollbackPassed": true,
   "sourceSnapshotMatchesCommit": true,
-  "finalReviewSubmissionReservedForOwner": true
+  "finalReviewSubmissionReservedForOwner": false,
+  "latestBuildProcessingState": "VALID",
+  "reviewSubmissionAuthorized": true,
+  "buildSelectionSaved": false,
+  "exportComplianceSaved": false,
+  "resubmissionBlockedBy": "Apple API key rejects write requests with 403; embedded browser access host unavailable"
 }

@@ -1,6 +1,6 @@
-# App Review response draft — not sent
+# App Review response — build 1.0 (7)
 
-Use this draft after build 1.0 (7) finishes processing, selecting it for review and saving `review-information.txt` in App Review Information. Final reply and resubmission remain with the app owner.
+Prepared for the user-authorized resubmission. Not yet sent.
 
 Hello App Review,
 
@@ -8,8 +8,8 @@ ModelBridge requires `com.apple.security.network.server` for its core local HTTP
 
 To exercise the functionality, add a local model on an Apple Silicon Mac with macOS 15+, enable a client row and grant its configuration directory, then send a prompt from that coding client. It connects to the corresponding incoming HTTP listener and receives streamed model output. The native UI uses the control server during normal operation. Outgoing HTTPS/model downloads use the separate network.client entitlement.
 
-We traced the reported API references to the previous Python inference runtime and its third-party dependencies. The replacement candidate removes that entire runtime, including Tcl/Tk, PyArrow, SciPy, SDL/OpenCV and ONNX Runtime. Local inference now uses a pinned native llama.cpp engine with Metal acceleration. Only GGUF model data is downloaded after installation; Python, pip and executable-code downloads are no longer part of the application.
+We traced the reported API references to the previous Python inference runtime and its third-party dependencies. Replacement build 1.0 (7) removes that entire runtime, including Tcl/Tk, PyArrow, SciPy, SDL/OpenCV and ONNX Runtime. Local inference now uses a pinned native llama.cpp engine with Metal acceleration. Only GGUF model data is downloaded after installation; Python, pip and executable-code downloads are no longer part of the application.
 
-The native candidate's archive passes the complete 52-name API audit across all 14 Mach-O binaries. Real on-device Qwen3 4B tests passed streaming tool-call and tool-result round trips through the Codex, Claude and Copilot protocols, plus idle context replacement and restoration after a settings-write failure. App Store boundary tests passed. This draft must be paired with the final signed/uploaded replacement build; no new reply or resubmission has been sent.
+The native candidate's archive passes the complete 52-name API audit across all 14 Mach-O binaries. Real on-device Qwen3 4B tests passed streaming tool-call and tool-result round trips through the Codex, Claude and Copilot protocols, plus idle context replacement and restoration after a settings-write failure. App Store boundary tests passed.
 
 Thank you.
